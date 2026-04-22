@@ -17,7 +17,7 @@ const defaultGlobLimit = 100
 func RegisterGlob(s *mcpserver.MCPServer, deps *Deps) {
 	tool := mcp.NewTool("Glob",
 		mcp.WithDescription("Find files matching a glob pattern. Respects .gitignore. Returns workspace-relative paths sorted by mtime (most recent first)."),
-		mcp.WithString("pattern", mcp.Required(), mcp.Description("Glob pattern, e.g. '**/*.go' or 'src/**/*.ts'.")),
+		mcp.WithString("pattern", mcp.Required(), mcp.Description("Glob pattern supporting '*', '?', '[...]', and '**'. e.g. '**/*.go' or 'src/**/*.ts'. Brace expansion and negation are NOT supported — make multiple calls for multi-extension matches.")),
 		mcp.WithString("path", mcp.Description("Directory to search within (workspace-relative or absolute). Defaults to workspace root.")),
 		mcp.WithNumber("limit", mcp.Description("Maximum number of paths to return (default 100).")),
 	)
@@ -185,7 +185,9 @@ func sortByMtimeDesc(cwd string, paths []string) {
 		}
 		entries[i] = entry{path: p, mtime: info.ModTime().UnixNano(), ok: true}
 	}
-	sort.SliceStable(entries, func(i, j int) bool {
+	// The compound key (ok, mtime, path) is total, so sort.Slice is sufficient
+	// — no need for the stability guarantees (and extra cost) of SliceStable.
+	sort.Slice(entries, func(i, j int) bool {
 		if entries[i].ok != entries[j].ok {
 			return entries[i].ok
 		}

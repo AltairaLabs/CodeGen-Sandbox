@@ -82,6 +82,29 @@ func TestGlob_SortsByMtimeDesc(t *testing.T) {
 	assert.Equal(t, "older.go", lines[1])
 }
 
+func TestGlob_EqualMtimeTiebreaksLexicographic(t *testing.T) {
+	requireRg(t)
+	deps, root := newTestDeps(t)
+
+	b := filepath.Join(root, "b.go")
+	a := filepath.Join(root, "a.go")
+	require.NoError(t, os.WriteFile(b, []byte("x"), 0o644))
+	require.NoError(t, os.WriteFile(a, []byte("x"), 0o644))
+
+	// Force identical mtimes so the sort must fall through to the path tiebreak.
+	same := time.Now()
+	require.NoError(t, os.Chtimes(a, same, same))
+	require.NoError(t, os.Chtimes(b, same, same))
+
+	res := callGlob(t, deps, map[string]any{"pattern": "**/*.go"})
+	require.False(t, res.IsError)
+
+	lines := strings.Split(strings.TrimRight(textOf(t, res), "\n"), "\n")
+	require.Len(t, lines, 2)
+	assert.Equal(t, "a.go", lines[0])
+	assert.Equal(t, "b.go", lines[1])
+}
+
 func TestGlob_PathArgScopesSearch(t *testing.T) {
 	requireRg(t)
 	deps, root := newTestDeps(t)
