@@ -3,6 +3,9 @@ package verify
 // goDetector implements Detector for Go projects identified by a go.mod at
 // the workspace root.
 type goDetector struct {
+	// root is retained for future root-relative helpers attached to the
+	// detector (e.g. project-specific test-command overrides). Currently
+	// unused — callers pass root explicitly to verify.Lint and friends.
 	root string
 }
 

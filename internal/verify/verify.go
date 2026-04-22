@@ -27,7 +27,8 @@ type Detector interface {
 // Detect returns a Detector for the project rooted at root, or nil if no
 // known marker is found. Only the immediate root is inspected; markers in
 // subdirectories do not count (the workspace root is the authoritative
-// anchor per the sandbox's trust-boundary model).
+// anchor per the sandbox's trust-boundary model). root must be an absolute
+// path; callers should resolve the workspace root before invoking.
 func Detect(root string) Detector {
 	if fileExists(filepath.Join(root, "go.mod")) {
 		return &goDetector{root: root}
