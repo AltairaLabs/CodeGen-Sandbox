@@ -35,6 +35,9 @@ func HandleEdit(deps *Deps) func(context.Context, mcp.CallToolRequest) (*mcp.Cal
 		if !ok {
 			return ErrorResult("old_string is required"), nil
 		}
+		if oldStr == "" {
+			return ErrorResult("old_string must be non-empty"), nil
+		}
 		newStr, ok := args["new_string"].(string)
 		if !ok {
 			return ErrorResult("new_string is required"), nil

@@ -27,6 +27,23 @@ func writeAndMarkRead(t *testing.T, deps *tools.Deps, path, body string) {
 	deps.Tracker.MarkRead(path)
 }
 
+func TestEdit_EmptyOldStringRejected(t *testing.T) {
+	deps, root := newTestDeps(t)
+	path := filepath.Join(root, "a.txt")
+	writeAndMarkRead(t, deps, path, "alpha\nbeta\n")
+
+	res := callEdit(t, deps, map[string]any{
+		"file_path":   path,
+		"old_string":  "",
+		"new_string":  "X",
+		"replace_all": true,
+	})
+	require.True(t, res.IsError, "empty old_string must be rejected to prevent file corruption")
+
+	data, _ := os.ReadFile(path)
+	assert.Equal(t, "alpha\nbeta\n", string(data), "file must not be modified")
+}
+
 func TestEdit_ReplacesFirstOccurrence(t *testing.T) {
 	deps, root := newTestDeps(t)
 	path := filepath.Join(root, "a.txt")
