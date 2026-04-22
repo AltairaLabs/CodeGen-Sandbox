@@ -16,7 +16,7 @@ const defaultGlobLimit = 100
 // RegisterGlob registers the Glob tool on the given MCP server.
 func RegisterGlob(s *mcpserver.MCPServer, deps *Deps) {
 	tool := mcp.NewTool("Glob",
-		mcp.WithDescription("Find files matching a glob pattern. Respects .gitignore. Returns workspace-relative paths sorted by mtime (most recent first)."),
+		mcp.WithDescription("Find files matching a glob pattern. Respects .gitignore. Returns paths relative to the workspace root (including the 'path' prefix when scoped), sorted by mtime (most recent first)."),
 		mcp.WithString("pattern", mcp.Required(), mcp.Description("Glob pattern supporting '*', '?', '[...]', and '**'. e.g. '**/*.go' or 'src/**/*.ts'. Brace expansion and negation are NOT supported — make multiple calls for multi-extension matches.")),
 		mcp.WithString("path", mcp.Description("Directory to search within (workspace-relative or absolute). Defaults to workspace root.")),
 		mcp.WithNumber("limit", mcp.Description("Maximum number of paths to return (default 100).")),
@@ -34,7 +34,13 @@ func HandleGlob(deps *Deps) func(context.Context, mcp.CallToolRequest) (*mcp.Cal
 			return ErrorResult("pattern is required"), nil
 		}
 
-		cwd := deps.Workspace.Root()
+		root := deps.Workspace.Root()
+
+		// Keep cwd at the workspace root so emitted paths are always
+		// workspace-relative, matching Grep's contract. If the caller scoped
+		// the search to a subdirectory via `path`, pass it as a positional
+		// arg to rg (which prefixes the scope in its output).
+		var scopeArg string
 		if pathArg, ok := args["path"].(string); ok && pathArg != "" {
 			abs, err := deps.Workspace.Resolve(pathArg)
 			if err != nil {
@@ -47,7 +53,13 @@ func HandleGlob(deps *Deps) func(context.Context, mcp.CallToolRequest) (*mcp.Cal
 			if !info.IsDir() {
 				return ErrorResult("path is not a directory: %s", pathArg), nil
 			}
-			cwd = abs
+			rel, err := filepath.Rel(root, abs)
+			if err != nil {
+				return ErrorResult("relative path: %v", err), nil
+			}
+			if rel != "." {
+				scopeArg = rel
+			}
 		}
 
 		limit := defaultGlobLimit
@@ -63,7 +75,10 @@ func HandleGlob(deps *Deps) func(context.Context, mcp.CallToolRequest) (*mcp.Cal
 			"--no-require-git",
 			"--color=never",
 		}
-		out, err := runRipgrep(ctx, rgArgs, cwd)
+		if scopeArg != "" {
+			rgArgs = append(rgArgs, scopeArg)
+		}
+		out, err := runRipgrep(ctx, rgArgs, root)
 		if err != nil {
 			return ErrorResult("glob: %v", err), nil
 		}
@@ -76,7 +91,7 @@ func HandleGlob(deps *Deps) func(context.Context, mcp.CallToolRequest) (*mcp.Cal
 			}
 		}
 
-		sortByMtimeDesc(cwd, paths)
+		sortByMtimeDesc(root, paths)
 		if len(paths) > limit {
 			paths = paths[:limit]
 		}

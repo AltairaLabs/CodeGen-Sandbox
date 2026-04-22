@@ -117,7 +117,7 @@ func TestGlob_PathArgScopesSearch(t *testing.T) {
 	require.False(t, res.IsError)
 
 	body := textOf(t, res)
-	assert.Contains(t, body, "nested.go")
+	assert.Contains(t, body, "sub/nested.go", "path prefix must be preserved for workspace-relative output")
 	assert.NotContains(t, body, "top.go")
 }
 
