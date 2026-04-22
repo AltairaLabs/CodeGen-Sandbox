@@ -31,6 +31,7 @@ func New(ws *workspace.Workspace) (*Server, error) {
 	}
 	s.sse = mcpserver.NewSSEServer(mcpSrv)
 	tools.RegisterRead(s.mcp, &tools.Deps{Workspace: s.ws, Tracker: s.tracker})
+	tools.RegisterWrite(s.mcp, &tools.Deps{Workspace: s.ws, Tracker: s.tracker})
 	return s, nil
 }
 
