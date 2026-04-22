@@ -635,7 +635,7 @@ kill "$(cat /tmp/sandbox-bash-smoke.pid)" 2>/dev/null || true
 - Network-restriction denylist (curl, wget, nc, ssh) → Plan 8 will address via URL filter.
 - Secret scrubbing of output → Plan 5.
 - Per-call env allowlist → out of scope; container controls env.
-- Captures of partial output on timeout (`cmd.CombinedOutput` returns whatever was buffered before the process was killed — which is what we use; no extra logic needed).
+- ~~Captures of partial output on timeout (`cmd.CombinedOutput` returns whatever was buffered before the process was killed — which is what we use; no extra logic needed).~~ **Superseded:** this claim was falsified during Task 1. `exec.CommandContext` SIGKILLs only the direct child; commands that fork detached descendants (`sleep 10 & wait`, piped jobs) keep the inherited pipe open, so `CombinedOutput` blocks past the timeout. Fixed in commit `23bb87d` with `SysProcAttr{Setpgid: true}` + a custom `cmd.Cancel` that kills the whole process group, plus `cmd.WaitDelay = 2s` to let buffered output flush. Test: `TestBash_TimeoutKillsBackgroundedChildren`.
 
 **Placeholder scan:** no TBDs, no "implement later", no "add appropriate error handling". Each step has code blocks where code is needed and explicit expected outputs where commands are run.
 
