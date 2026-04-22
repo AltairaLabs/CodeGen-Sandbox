@@ -15,7 +15,7 @@ import (
 // RegisterEdit registers the Edit tool.
 func RegisterEdit(s *mcpserver.MCPServer, deps *Deps) {
 	tool := mcp.NewTool("Edit",
-		mcp.WithDescription("Exact-string replace within a file. Requires a prior Read."),
+		mcp.WithDescription("Exact-string replace within a file. Requires a prior Read. On Go projects, lint findings for the edited file are appended to the success message as 'post-edit lint findings (N):' — best effort, silent on linter failure or absence."),
 		mcp.WithString("file_path", mcp.Required()),
 		mcp.WithString("old_string", mcp.Required()),
 		mcp.WithString("new_string", mcp.Required()),
@@ -103,6 +103,11 @@ const postEditLintTimeoutSec = 30
 // formatted block of findings that apply to the file just edited. Returns
 // "" if there are no findings, no detected project, or the linter couldn't
 // run for any reason — Edit should proceed normally.
+//
+// This contract intentionally diverges from run_lint: Edit suppresses
+// partial findings on error to keep Edit's success signal crisp ("the
+// replacement succeeded"), while run_lint forwards partial findings because
+// its sole purpose IS to report lint state.
 func postEditLintFeedback(ctx context.Context, root, editedAbs string) string {
 	findings, err := verify.Lint(ctx, root, postEditLintTimeoutSec)
 	if err != nil || len(findings) == 0 {
