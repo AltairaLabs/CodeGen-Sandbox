@@ -66,7 +66,7 @@ func HandleRead(deps *Deps) func(context.Context, mcp.CallToolRequest) (*mcp.Cal
 	}
 }
 
-func readNumbered(abs string, offset, limit int) (string, error) {
+func readNumbered(abs string, offset, limit int) (body string, err error) {
 	f, err := os.Open(abs) //nolint:gosec // path already contained by workspace
 	if err != nil {
 		return "", err
