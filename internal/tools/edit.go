@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
+	"github.com/altairalabs/codegen-sandbox/internal/verify"
 	"github.com/mark3labs/mcp-go/mcp"
 	mcpserver "github.com/mark3labs/mcp-go/server"
 )
@@ -24,7 +26,7 @@ func RegisterEdit(s *mcpserver.MCPServer, deps *Deps) {
 
 // HandleEdit returns the Edit tool handler.
 func HandleEdit(deps *Deps) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	return func(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		args, _ := req.Params.Arguments.(map[string]any)
 
 		filePath, _ := args["file_path"].(string)
@@ -84,6 +86,52 @@ func HandleEdit(deps *Deps) func(context.Context, mcp.CallToolRequest) (*mcp.Cal
 		if err := atomicWrite(abs, []byte(updated)); err != nil {
 			return ErrorResult("write: %v", err), nil
 		}
-		return TextResult(fmt.Sprintf("replaced %d occurrence(s) in %s", count, filePath)), nil
+		msg := fmt.Sprintf("replaced %d occurrence(s) in %s", count, filePath)
+		if feedback := postEditLintFeedback(ctx, deps.Workspace.Root(), abs); feedback != "" {
+			msg += "\n\n" + feedback
+		}
+		return TextResult(msg), nil
 	}
+}
+
+// postEditLintTimeoutSec is deliberately short — the linter run is a
+// best-effort annotation on the Edit result, not the primary purpose of the
+// call, so we don't want a slow linter to dominate per-Edit latency.
+const postEditLintTimeoutSec = 30
+
+// postEditLintFeedback runs the project's linter (best effort) and returns a
+// formatted block of findings that apply to the file just edited. Returns
+// "" if there are no findings, no detected project, or the linter couldn't
+// run for any reason — Edit should proceed normally.
+func postEditLintFeedback(ctx context.Context, root, editedAbs string) string {
+	findings, err := verify.Lint(ctx, root, postEditLintTimeoutSec)
+	if err != nil || len(findings) == 0 {
+		return ""
+	}
+	rel, err := filepath.Rel(root, editedAbs)
+	if err != nil {
+		return ""
+	}
+
+	var matched []verify.LintFinding
+	for _, f := range findings {
+		cmpFile := f.File
+		if filepath.IsAbs(cmpFile) {
+			if r, err := filepath.Rel(root, cmpFile); err == nil {
+				cmpFile = r
+			}
+		}
+		if cmpFile == rel {
+			matched = append(matched, f)
+		}
+	}
+	if len(matched) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "post-edit lint findings (%d):\n", len(matched))
+	for _, f := range matched {
+		fmt.Fprintf(&sb, "%s:%d:%d:%s: %s\n", f.File, f.Line, f.Column, f.Rule, f.Message)
+	}
+	return sb.String()
 }
