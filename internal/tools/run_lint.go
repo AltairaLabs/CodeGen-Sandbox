@@ -28,7 +28,8 @@ func RegisterRunLint(s *mcpserver.MCPServer, deps *Deps) {
 // HandleRunLint returns the run_lint tool handler.
 func HandleRunLint(deps *Deps) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		if verify.Detect(deps.Workspace.Root()) == nil {
+		det := verify.Detect(deps.Workspace.Root())
+		if det == nil {
 			return ErrorResult("no supported project detected in workspace root"), nil
 		}
 
@@ -42,14 +43,29 @@ func HandleRunLint(deps *Deps) func(context.Context, mcp.CallToolRequest) (*mcp.
 		}
 
 		findings, err := verify.Lint(ctx, deps.Workspace.Root(), timeoutSec)
-		if err != nil {
-			if errors.Is(err, verify.ErrLinterMissing) {
-				return ErrorResult("linter not installed on PATH"), nil
+		if errors.Is(err, verify.ErrLinterMissing) {
+			// Name the missing binary so operators can tell whether it's a
+			// dev-env or Docker-image misconfiguration.
+			binary := "<unknown>"
+			if cmd := det.LintCmd(); len(cmd) > 0 {
+				binary = cmd[0]
 			}
+			return ErrorResult("linter not installed: %s", binary), nil
+		}
+		if err != nil && len(findings) == 0 {
+			// No partial results worth surfacing — report the error.
 			return ErrorResult("run_lint: %v", err), nil
 		}
 
-		return TextResult(formatFindings(findings)), nil
+		// Happy path OR partial-findings-with-error: emit the findings we
+		// have. When a timeout or exit ≥ 2 left the linter mid-run, findings
+		// may still be informative — include them plus a trailing marker
+		// so the caller knows the run was incomplete.
+		body := formatFindings(findings)
+		if err != nil {
+			body += fmt.Sprintf("(lint incomplete: %v)\n", err)
+		}
+		return TextResult(body), nil
 	}
 }
 

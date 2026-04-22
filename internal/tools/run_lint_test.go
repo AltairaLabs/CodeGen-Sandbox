@@ -48,6 +48,19 @@ func TestRunLint_NoDetectorIsError(t *testing.T) {
 	assert.True(t, res.IsError)
 }
 
+func TestRunLint_MissingBinaryNamesIt(t *testing.T) {
+	deps, root := newTestDeps(t)
+	require.NoError(t, os.WriteFile(filepath.Join(root, "go.mod"), []byte("module probe\n\ngo 1.21\n"), 0o644))
+	t.Setenv("PATH", t.TempDir()) // empty PATH — golangci-lint unreachable
+
+	res := callRunLint(t, deps, map[string]any{})
+	assert.True(t, res.IsError)
+	// Plan-specified wording: "linter not installed: <binary>". The binary
+	// name lets an operator tell whether it's a dev-env or Docker-image
+	// misconfiguration.
+	assert.Contains(t, textOf(t, res), "golangci-lint")
+}
+
 func TestRunLint_FindingsPrintedAsStructured(t *testing.T) {
 	requireGolangciLintTool(t)
 	deps, root := newTestDeps(t)
