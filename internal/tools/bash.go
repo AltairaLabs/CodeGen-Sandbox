@@ -29,7 +29,7 @@ const (
 // RegisterBash registers the Bash tool on the given MCP server.
 func RegisterBash(s *mcpserver.MCPServer, deps *Deps) {
 	tool := mcp.NewTool("Bash",
-		mcp.WithDescription("Run a shell command in the workspace via bash -c. Returns combined stdout+stderr. A trailing 'exit: N' line is emitted for non-zero exits. A 'timed out after Ns' marker is emitted on timeout (exit code 124), and the entire process group is killed so backgrounded children do not survive."),
+		mcp.WithDescription("Run a shell command in the workspace via bash -c. Returns combined stdout+stderr. A trailing 'exit: N' line is emitted for non-zero exits. A 'timed out after Ns' marker is emitted on timeout (exit code 124), and the entire process group is killed so backgrounded children do not survive. A small set of dangerous tokens (sudo, su, shutdown, reboot, halt, poweroff, chroot, mount, umount, mkfs) at plausible command positions are rejected before the command runs."),
 		mcp.WithString("command", mcp.Required(), mcp.Description("Shell command to run.")),
 		mcp.WithString("description", mcp.Required(), mcp.Description("5-10 word description of what this command does. Recorded for agent context; does not affect execution.")),
 		mcp.WithNumber("timeout", mcp.Description(fmt.Sprintf("Timeout in seconds. Default %d, clamped to a maximum of %d.", defaultBashTimeoutSec, maxBashTimeoutSec))),
