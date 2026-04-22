@@ -62,6 +62,21 @@ func TestGrep_CountMode(t *testing.T) {
 	assert.Contains(t, body, "a.go:2")
 }
 
+func TestGrep_RespectsGitignore(t *testing.T) {
+	requireRg(t)
+	deps, root := newTestDeps(t)
+	require.NoError(t, os.WriteFile(filepath.Join(root, ".gitignore"), []byte("ignored.go\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "kept.go"), []byte("alpha\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "ignored.go"), []byte("alpha\n"), 0o644))
+
+	res := callGrep(t, deps, map[string]any{"pattern": "alpha"})
+	require.False(t, res.IsError)
+
+	body := textOf(t, res)
+	assert.Contains(t, body, "kept.go:1:alpha")
+	assert.NotContains(t, body, "ignored.go")
+}
+
 func TestGrep_CaseInsensitive(t *testing.T) {
 	requireRg(t)
 	deps, root := newTestDeps(t)

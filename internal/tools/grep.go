@@ -19,7 +19,7 @@ func RegisterGrep(s *mcpserver.MCPServer, deps *Deps) {
 		mcp.WithString("glob", mcp.Description("Glob filter, e.g. '*.go'.")),
 		mcp.WithBoolean("case_insensitive", mcp.Description("Case-insensitive match.")),
 		mcp.WithString("output_mode", mcp.Description("One of 'content' (default), 'files_with_matches', 'count'.")),
-		mcp.WithNumber("head_limit", mcp.Description("Truncate output to this many lines.")),
+		mcp.WithNumber("head_limit", mcp.Description("Truncate output to this many lines. 0 or unset means no limit. For files_with_matches/count modes, bounds the number of files reported.")),
 	)
 	s.AddTool(tool, HandleGrep(deps))
 }

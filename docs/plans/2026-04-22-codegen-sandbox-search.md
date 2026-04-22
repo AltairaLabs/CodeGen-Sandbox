@@ -10,7 +10,10 @@
 
 **Prerequisite (operator):** `rg` must be installed on any machine that runs the test suite or the built binary. macOS: `brew install ripgrep`. Debian/Ubuntu: `apt install ripgrep`. Alpine: `apk add ripgrep`. If `rg` is missing, the helper returns a clear error and tests that depend on it are skipped with a `t.Skip` message.
 
-**Deviation discovered during execution (2026-04-22):** Task 2's original design passed `-g <pattern>` to `rg`. During TDD, `TestGlob_RespectsGitignore` revealed that `rg -g` acts as a whitelist that **bypasses `.gitignore`** (files matching the glob are included even when they're ignored). The fix: omit `-g` from the rg invocation so `.gitignore` is honored, and apply the glob pattern in Go after rg returns the file list. See `internal/tools/glob.go:matchDoublestar`. The matcher supports `*`, `?`, `[...]`, and `**`; brace expansion and negation are not supported.
+**Deviations discovered during execution (2026-04-22):**
+
+- **Task 2 (Glob): `rg -g` bypasses `.gitignore`.** During TDD, `TestGlob_RespectsGitignore` revealed that `rg -g` acts as a whitelist that overrides ignore rules (files matching the glob are emitted even when they're listed in `.gitignore`). Fix: omit `-g` from the rg invocation so `.gitignore` is honored, and apply the glob pattern in Go after rg returns the file list. See `internal/tools/glob.go:matchDoublestar`. The matcher supports `*`, `?`, `[...]`, and `**`; brace expansion and negation are not supported.
+- **Task 3 (Grep): `--heading=false` is invalid in rg 15.x.** The plan's sketch used `-n --heading=false` for content mode; rg 15.x rejects that syntax with exit 2. The correct flag is `-n --no-heading`.
 
 **Out of scope for this plan:**
 - `Bash`, `run_tests`, `run_lint`, `run_typecheck` (Plans 3–4)
