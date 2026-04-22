@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/altairalabs/codegen-sandbox/internal/tools"
 	"github.com/mark3labs/mcp-go/mcp"
@@ -101,6 +102,29 @@ func TestBash_TimeoutReportsTimedOut(t *testing.T) {
 	require.False(t, res.IsError)
 	body := textOf(t, res)
 	assert.Contains(t, body, "timed out after 1s")
+}
+
+func TestBash_TimeoutKillsBackgroundedChildren(t *testing.T) {
+	requireBash(t)
+	deps, _ := newTestDeps(t)
+
+	// Without a process-group kill, `sleep 10 & wait` ignores the timeout —
+	// SIGKILLing only the bash PID leaves the sleep child running, and
+	// CombinedOutput blocks on the still-open inherited pipe until sleep
+	// completes 10s later. This test locks in the whole-group-kill contract.
+	start := time.Now()
+	res := callBash(t, deps, map[string]any{
+		"command":     "sleep 10 & wait",
+		"description": "backgrounded sleep must be killed on timeout",
+		"timeout":     float64(1),
+	})
+	elapsed := time.Since(start)
+
+	require.False(t, res.IsError)
+	body := textOf(t, res)
+	assert.Contains(t, body, "timed out after 1s")
+	assert.Contains(t, body, "exit: 124", "timeout exit code must follow the timeout(1) convention")
+	assert.Less(t, elapsed, 5*time.Second, "timeout must kill the process group, not wait for backgrounded children")
 }
 
 func TestBash_OutputIsCapped(t *testing.T) {
