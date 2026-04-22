@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -85,4 +86,28 @@ func runVerifyCmd(ctx context.Context, cmd []string, cwd string, timeoutSec int)
 		}
 	}
 	return res, nil
+}
+
+// formatVerifyResult renders an execResult as agent-facing text:
+// stdout first (trailing newline guaranteed), then stderr in a marked
+// section if present, then optional timeout marker, then "exit: N".
+// Shared by run_tests and run_typecheck (both want the same shape).
+func formatVerifyResult(res execResult, timeoutSec int) string {
+	var sb strings.Builder
+	sb.Write(res.Stdout)
+	if len(res.Stdout) > 0 && !strings.HasSuffix(string(res.Stdout), "\n") {
+		sb.WriteByte('\n')
+	}
+	if len(res.Stderr) > 0 {
+		sb.WriteString("--- stderr ---\n")
+		sb.Write(res.Stderr)
+		if !strings.HasSuffix(string(res.Stderr), "\n") {
+			sb.WriteByte('\n')
+		}
+	}
+	if res.TimedOut {
+		fmt.Fprintf(&sb, "timed out after %ds\n", timeoutSec)
+	}
+	fmt.Fprintf(&sb, "exit: %d\n", res.ExitCode)
+	return sb.String()
 }

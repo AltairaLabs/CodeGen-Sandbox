@@ -3,7 +3,6 @@ package tools
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/altairalabs/codegen-sandbox/internal/verify"
 	"github.com/mark3labs/mcp-go/mcp"
@@ -48,27 +47,4 @@ func HandleRunTests(deps *Deps) func(context.Context, mcp.CallToolRequest) (*mcp
 
 		return TextResult(formatVerifyResult(res, timeoutSec)), nil
 	}
-}
-
-// formatVerifyResult renders an execResult as agent-facing text:
-// stdout first (trailing newline guaranteed), then stderr in a marked
-// section if present, then optional timeout marker, then "exit: N".
-func formatVerifyResult(res execResult, timeoutSec int) string {
-	var sb strings.Builder
-	sb.Write(res.Stdout)
-	if len(res.Stdout) > 0 && !strings.HasSuffix(string(res.Stdout), "\n") {
-		sb.WriteByte('\n')
-	}
-	if len(res.Stderr) > 0 {
-		sb.WriteString("--- stderr ---\n")
-		sb.Write(res.Stderr)
-		if !strings.HasSuffix(string(res.Stderr), "\n") {
-			sb.WriteByte('\n')
-		}
-	}
-	if res.TimedOut {
-		fmt.Fprintf(&sb, "timed out after %ds\n", timeoutSec)
-	}
-	fmt.Fprintf(&sb, "exit: %d\n", res.ExitCode)
-	return sb.String()
 }
