@@ -37,6 +37,7 @@ func New(ws *workspace.Workspace) (*Server, error) {
 	tools.RegisterGrep(s.mcp, &tools.Deps{Workspace: s.ws, Tracker: s.tracker})
 	tools.RegisterBash(s.mcp, &tools.Deps{Workspace: s.ws, Tracker: s.tracker})
 	tools.RegisterRunTests(s.mcp, &tools.Deps{Workspace: s.ws, Tracker: s.tracker})
+	tools.RegisterRunLint(s.mcp, &tools.Deps{Workspace: s.ws, Tracker: s.tracker})
 	return s, nil
 }
 
