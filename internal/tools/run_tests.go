@@ -6,7 +6,6 @@ import (
 
 	"github.com/altairalabs/codegen-sandbox/internal/verify"
 	"github.com/mark3labs/mcp-go/mcp"
-	mcpserver "github.com/mark3labs/mcp-go/server"
 )
 
 const (
@@ -15,7 +14,7 @@ const (
 )
 
 // RegisterRunTests registers the run_tests tool on the given MCP server.
-func RegisterRunTests(s *mcpserver.MCPServer, deps *Deps) {
+func RegisterRunTests(s Registrar, deps *Deps) {
 	tool := mcp.NewTool("run_tests",
 		mcp.WithDescription("Run the project's test suite. Project type is detected from the workspace root (currently: Go via go.mod). Returns combined stdout+stderr plus a trailing 'exit: N' line."),
 		mcp.WithNumber("timeout", mcp.Description(fmt.Sprintf("Timeout in seconds. Default %d, clamped to a maximum of %d.", defaultRunTestsTimeoutSec, maxRunTestsTimeoutSec))),

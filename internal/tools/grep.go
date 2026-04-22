@@ -7,11 +7,10 @@ import (
 	"strings"
 
 	"github.com/mark3labs/mcp-go/mcp"
-	mcpserver "github.com/mark3labs/mcp-go/server"
 )
 
 // RegisterGrep registers the Grep tool on the given MCP server.
-func RegisterGrep(s *mcpserver.MCPServer, deps *Deps) {
+func RegisterGrep(s Registrar, deps *Deps) {
 	tool := mcp.NewTool("Grep",
 		mcp.WithDescription("Search file contents with a regex. ripgrep-backed; respects .gitignore. Returns matches in the requested output_mode."),
 		mcp.WithString("pattern", mcp.Required(), mcp.Description("Regex (Rust regex syntax).")),

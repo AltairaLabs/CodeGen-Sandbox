@@ -6,6 +6,7 @@ import (
 
 	"github.com/altairalabs/codegen-sandbox/internal/workspace"
 	"github.com/mark3labs/mcp-go/mcp"
+	mcpserver "github.com/mark3labs/mcp-go/server"
 )
 
 // Deps carries the dependencies a tool handler needs.
@@ -26,4 +27,12 @@ func ErrorResult(format string, args ...any) *mcp.CallToolResult {
 // TextResult wraps a plain text body as an MCP tool result.
 func TextResult(body string) *mcp.CallToolResult {
 	return mcp.NewToolResultText(body)
+}
+
+// Registrar is the subset of *mcpserver.MCPServer that Register* functions
+// need. Accepting an interface (rather than the concrete type) lets the
+// server package wrap handlers with middleware without touching each tool
+// registration individually.
+type Registrar interface {
+	AddTool(tool mcp.Tool, handler mcpserver.ToolHandlerFunc)
 }

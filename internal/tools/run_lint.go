@@ -8,7 +8,6 @@ import (
 
 	"github.com/altairalabs/codegen-sandbox/internal/verify"
 	"github.com/mark3labs/mcp-go/mcp"
-	mcpserver "github.com/mark3labs/mcp-go/server"
 )
 
 const (
@@ -17,7 +16,7 @@ const (
 )
 
 // RegisterRunLint registers the run_lint tool on the given MCP server.
-func RegisterRunLint(s *mcpserver.MCPServer, deps *Deps) {
+func RegisterRunLint(s Registrar, deps *Deps) {
 	tool := mcp.NewTool("run_lint",
 		mcp.WithDescription("Run the project's linter. Returns structured findings as 'file:line:col:rule: message' followed by 'N findings'. Project type is detected from the workspace root (currently: Go via go.mod, uses golangci-lint)."),
 		mcp.WithNumber("timeout", mcp.Description(fmt.Sprintf("Timeout in seconds. Default %d, clamped to a maximum of %d.", defaultRunLintTimeoutSec, maxRunLintTimeoutSec))),

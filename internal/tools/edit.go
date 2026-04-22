@@ -9,11 +9,10 @@ import (
 
 	"github.com/altairalabs/codegen-sandbox/internal/verify"
 	"github.com/mark3labs/mcp-go/mcp"
-	mcpserver "github.com/mark3labs/mcp-go/server"
 )
 
 // RegisterEdit registers the Edit tool.
-func RegisterEdit(s *mcpserver.MCPServer, deps *Deps) {
+func RegisterEdit(s Registrar, deps *Deps) {
 	tool := mcp.NewTool("Edit",
 		mcp.WithDescription("Exact-string replace within a file. Requires a prior Read. On Go projects, lint findings for the edited file are appended to the success message as 'post-edit lint findings (N):' — best effort, silent on linter failure or absence."),
 		mcp.WithString("file_path", mcp.Required()),
