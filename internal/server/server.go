@@ -33,6 +33,8 @@ func New(ws *workspace.Workspace) (*Server, error) {
 	tools.RegisterRead(s.mcp, &tools.Deps{Workspace: s.ws, Tracker: s.tracker})
 	tools.RegisterWrite(s.mcp, &tools.Deps{Workspace: s.ws, Tracker: s.tracker})
 	tools.RegisterEdit(s.mcp, &tools.Deps{Workspace: s.ws, Tracker: s.tracker})
+	tools.RegisterGlob(s.mcp, &tools.Deps{Workspace: s.ws, Tracker: s.tracker})
+	tools.RegisterGrep(s.mcp, &tools.Deps{Workspace: s.ws, Tracker: s.tracker})
 	return s, nil
 }
 
