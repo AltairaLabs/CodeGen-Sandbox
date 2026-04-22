@@ -8,11 +8,10 @@ import (
 	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
-	mcpserver "github.com/mark3labs/mcp-go/server"
 )
 
 // RegisterWrite registers the Write tool.
-func RegisterWrite(s *mcpserver.MCPServer, deps *Deps) {
+func RegisterWrite(s Registrar, deps *Deps) {
 	tool := mcp.NewTool("Write",
 		mcp.WithDescription("Write a file. Overwriting an existing file requires a prior Read."),
 		mcp.WithString("file_path", mcp.Required()),

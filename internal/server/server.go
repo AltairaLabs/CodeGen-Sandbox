@@ -30,15 +30,22 @@ func New(ws *workspace.Workspace) (*Server, error) {
 		tracker: workspace.NewReadTracker(),
 	}
 	s.sse = mcpserver.NewSSEServer(mcpSrv)
-	tools.RegisterRead(s.mcp, &tools.Deps{Workspace: s.ws, Tracker: s.tracker})
-	tools.RegisterWrite(s.mcp, &tools.Deps{Workspace: s.ws, Tracker: s.tracker})
-	tools.RegisterEdit(s.mcp, &tools.Deps{Workspace: s.ws, Tracker: s.tracker})
-	tools.RegisterGlob(s.mcp, &tools.Deps{Workspace: s.ws, Tracker: s.tracker})
-	tools.RegisterGrep(s.mcp, &tools.Deps{Workspace: s.ws, Tracker: s.tracker})
-	tools.RegisterBash(s.mcp, &tools.Deps{Workspace: s.ws, Tracker: s.tracker})
-	tools.RegisterRunTests(s.mcp, &tools.Deps{Workspace: s.ws, Tracker: s.tracker})
-	tools.RegisterRunLint(s.mcp, &tools.Deps{Workspace: s.ws, Tracker: s.tracker})
-	tools.RegisterRunTypecheck(s.mcp, &tools.Deps{Workspace: s.ws, Tracker: s.tracker})
+
+	// Wrap every tool handler with scrubMiddleware so secrets are redacted
+	// from text output before it leaves the sandbox. The scrubbingRegistrar
+	// is the single place where middleware is applied — adding another
+	// output-layer check later (logging, metrics) would slot in here.
+	reg := &scrubbingRegistrar{inner: s.mcp}
+	deps := &tools.Deps{Workspace: s.ws, Tracker: s.tracker}
+	tools.RegisterRead(reg, deps)
+	tools.RegisterWrite(reg, deps)
+	tools.RegisterEdit(reg, deps)
+	tools.RegisterGlob(reg, deps)
+	tools.RegisterGrep(reg, deps)
+	tools.RegisterBash(reg, deps)
+	tools.RegisterRunTests(reg, deps)
+	tools.RegisterRunLint(reg, deps)
+	tools.RegisterRunTypecheck(reg, deps)
 	return s, nil
 }
 

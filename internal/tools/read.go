@@ -8,13 +8,12 @@ import (
 	"strings"
 
 	"github.com/mark3labs/mcp-go/mcp"
-	mcpserver "github.com/mark3labs/mcp-go/server"
 )
 
 const defaultReadLimit = 2000
 
 // RegisterRead registers the Read tool with the given MCP server.
-func RegisterRead(s *mcpserver.MCPServer, deps *Deps) {
+func RegisterRead(s Registrar, deps *Deps) {
 	tool := mcp.NewTool("Read",
 		mcp.WithDescription("Read a file from the workspace. Returns cat -n style line-numbered text."),
 		mcp.WithString("file_path", mcp.Required(), mcp.Description("Absolute or workspace-relative path.")),

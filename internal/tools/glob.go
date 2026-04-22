@@ -8,13 +8,12 @@ import (
 	"strings"
 
 	"github.com/mark3labs/mcp-go/mcp"
-	mcpserver "github.com/mark3labs/mcp-go/server"
 )
 
 const defaultGlobLimit = 100
 
 // RegisterGlob registers the Glob tool on the given MCP server.
-func RegisterGlob(s *mcpserver.MCPServer, deps *Deps) {
+func RegisterGlob(s Registrar, deps *Deps) {
 	tool := mcp.NewTool("Glob",
 		mcp.WithDescription("Find files matching a glob pattern. Respects .gitignore. Returns paths relative to the workspace root (including the 'path' prefix when scoped), sorted by mtime (most recent first)."),
 		mcp.WithString("pattern", mcp.Required(), mcp.Description("Glob pattern supporting '*', '?', '[...]', and '**'. e.g. '**/*.go' or 'src/**/*.ts'. Brace expansion and negation are NOT supported — make multiple calls for multi-extension matches.")),

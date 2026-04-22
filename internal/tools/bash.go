@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
-	mcpserver "github.com/mark3labs/mcp-go/server"
 )
 
 const (
@@ -27,7 +26,7 @@ const (
 )
 
 // RegisterBash registers the Bash tool on the given MCP server.
-func RegisterBash(s *mcpserver.MCPServer, deps *Deps) {
+func RegisterBash(s Registrar, deps *Deps) {
 	tool := mcp.NewTool("Bash",
 		mcp.WithDescription("Run a shell command in the workspace via bash -c. Runs from the workspace root (use `cd subdir && ...` to move); stdin is closed; env is inherited from the server. Returns combined stdout+stderr, capped at 100 KiB with a '... (output truncated, N bytes elided)' marker — late output such as the last few lines of a build log may be elided. A trailing 'exit: N' line is emitted for non-zero exits. A 'timed out after Ns' marker is emitted on timeout (exit code 124), and the entire process group is killed so backgrounded children do not survive. A small set of dangerous tokens (sudo, su, shutdown, reboot, halt, poweroff, chroot, mount, umount, mkfs) at plausible command positions are rejected before the command runs."),
 		mcp.WithString("command", mcp.Required(), mcp.Description("Shell command to run.")),
