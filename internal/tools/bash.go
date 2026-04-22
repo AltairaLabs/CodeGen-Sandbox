@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"regexp"
 	"strings"
 	"syscall"
 	"time"
@@ -50,6 +51,10 @@ func HandleBash(deps *Deps) func(context.Context, mcp.CallToolRequest) (*mcp.Cal
 		// human-readable intent for each Bash call.
 		if desc, _ := args["description"].(string); desc == "" {
 			return ErrorResult("description is required"), nil
+		}
+
+		if reason := denyReason(command); reason != "" {
+			return ErrorResult("command rejected: %s", reason), nil
 		}
 
 		timeoutSec := defaultBashTimeoutSec
@@ -133,4 +138,21 @@ func truncateOutput(b []byte, limit int) []byte {
 	trunc = append(trunc, b[:limit]...)
 	trunc = append(trunc, fmt.Appendf(nil, "\n... (output truncated, %d bytes elided)", len(b)-limit)...)
 	return trunc
+}
+
+// denyPattern matches denylisted command tokens at plausible command
+// positions. This is a defense-in-depth layer: the container is the real
+// trust boundary. Quoted subcommands (e.g. bash -c "sudo ...") are
+// intentionally NOT caught to avoid false positives on echo/printf of the
+// same tokens. Determined attackers can trivially bypass via $(echo su)do.
+var denyPattern = regexp.MustCompile(
+	`(?:^|[\s;&|(])\s*(sudo|su|shutdown|reboot|halt|poweroff|chroot|mount|umount|mkfs(?:\.\w+)?)(?:$|[\s;&|)])`,
+)
+
+// denyReason returns a non-empty reason string if command matches the denylist.
+func denyReason(command string) string {
+	if m := denyPattern.FindStringSubmatch(command); m != nil {
+		return fmt.Sprintf("command uses denylisted token %q", m[1])
+	}
+	return ""
 }

@@ -172,3 +172,85 @@ func TestBash_TimeoutClampedToMax(t *testing.T) {
 	require.False(t, res.IsError)
 	assert.NotContains(t, strings.ToLower(textOf(t, res)), "timed out")
 }
+
+func TestBashDeny_SudoRejected(t *testing.T) {
+	requireBash(t)
+	deps, _ := newTestDeps(t)
+	res := callBash(t, deps, map[string]any{
+		"command":     "sudo whoami",
+		"description": "try sudo",
+	})
+	assert.True(t, res.IsError)
+	assert.Contains(t, textOf(t, res), "sudo")
+}
+
+func TestBashDeny_SudoAfterPipeRejected(t *testing.T) {
+	requireBash(t)
+	deps, _ := newTestDeps(t)
+	res := callBash(t, deps, map[string]any{
+		"command":     "echo x && sudo ls",
+		"description": "sudo after &&",
+	})
+	assert.True(t, res.IsError)
+}
+
+func TestBashDeny_MkfsVariantRejected(t *testing.T) {
+	requireBash(t)
+	deps, _ := newTestDeps(t)
+	res := callBash(t, deps, map[string]any{
+		"command":     "mkfs.ext4 /dev/null",
+		"description": "format ext4",
+	})
+	assert.True(t, res.IsError)
+}
+
+func TestBashDeny_ShutdownRejected(t *testing.T) {
+	requireBash(t)
+	deps, _ := newTestDeps(t)
+	res := callBash(t, deps, map[string]any{
+		"command":     "shutdown -h now",
+		"description": "shutdown the host",
+	})
+	assert.True(t, res.IsError)
+}
+
+func TestBashDeny_FalsePositiveAvoided_FilenameContainsSu(t *testing.T) {
+	requireBash(t)
+	deps, _ := newTestDeps(t)
+	// /etc/sudoers as a filename must NOT trigger the sudo-at-command-position check.
+	res := callBash(t, deps, map[string]any{
+		"command":     "ls /etc/sudoers 2>/dev/null; true",
+		"description": "list sudoers path (should not trigger the deny regex)",
+	})
+	require.False(t, res.IsError, "unexpected deny: %s", textOf(t, res))
+}
+
+func TestBashDeny_FalsePositiveAvoided_WordPseudo(t *testing.T) {
+	requireBash(t)
+	deps, _ := newTestDeps(t)
+	res := callBash(t, deps, map[string]any{
+		"command":     "echo pseudo-random",
+		"description": "echo word containing su",
+	})
+	require.False(t, res.IsError, "unexpected deny: %s", textOf(t, res))
+}
+
+func TestBashDeny_MountRejected(t *testing.T) {
+	requireBash(t)
+	deps, _ := newTestDeps(t)
+	res := callBash(t, deps, map[string]any{
+		"command":     "mount -t tmpfs none /mnt",
+		"description": "mount tmpfs",
+	})
+	assert.True(t, res.IsError)
+}
+
+func TestBashDeny_ChrootRejected(t *testing.T) {
+	requireBash(t)
+	deps, _ := newTestDeps(t)
+	res := callBash(t, deps, map[string]any{
+		"command":     "chroot /tmp/jail /bin/sh",
+		"description": "chroot attempt",
+	})
+	assert.True(t, res.IsError)
+}
