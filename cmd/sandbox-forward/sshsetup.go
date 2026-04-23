@@ -210,14 +210,17 @@ func extractAuthArgs(args []string) []string {
 // string always ends with a newline.
 func buildSSHConfigBlock(name, server, keyPath string, authArgs []string) string {
 	var b strings.Builder
+	// ssh runs ProxyCommand through /bin/sh -c, so every user-supplied value
+	// must be shell-quoted. The `name` arg is already validated by
+	// isSafeHostName; server/keyPath/authArgs originate from user input.
 	fmt.Fprintf(&b, "Host %s\n", name)
-	fmt.Fprintf(&b, "  ProxyCommand sandbox-forward proxy --ssh --server %s", server)
+	fmt.Fprintf(&b, "  ProxyCommand sandbox-forward proxy --ssh --server %s", shellQuote(server))
 	for _, a := range authArgs {
 		fmt.Fprintf(&b, " %s", shellQuote(a))
 	}
 	b.WriteString("\n")
 	b.WriteString("  User sandbox\n")
-	fmt.Fprintf(&b, "  IdentityFile %s\n", keyPath)
+	fmt.Fprintf(&b, "  IdentityFile %s\n", shellQuote(keyPath))
 	b.WriteString("  StrictHostKeyChecking no\n")
 	b.WriteString("  UserKnownHostsFile /dev/null\n")
 	return b.String()

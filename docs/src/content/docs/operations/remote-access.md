@@ -66,6 +66,8 @@ Two self-describing endpoints are always mounted when `-api-addr` is set (both a
 
 The spec documents every route — including features gated behind `-enable-*` flags that may be off in a given deployment. Disabled routes return `404`; the spec still lists them so operators can discover the full surface. A drift test (`internal/api/docs_test.go`) keeps the spec and the server's route table in lock-step in CI.
 
+> **Egress note:** the `/api/docs` page is an HTML shell that loads Scalar from `cdn.jsdelivr.net`. If your `NetworkPolicy` blocks outbound traffic from developer browsers (or from the sandbox pod itself, if you front the UI through an internal proxy), the page will render blank. `GET /api/openapi.yaml` is self-contained and has no external dependencies — point a local copy of Scalar, Swagger UI, or Redoc at it, or just consume the YAML directly.
+
 ## Identity header contract
 
 The routing service MUST set three headers on every request it forwards:

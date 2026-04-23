@@ -48,9 +48,12 @@ func WithIdentity(devMode bool, next http.Handler) http.Handler {
 			return
 		}
 
+		// Pre-flight audit — long-running handlers (SSE, WS) only return
+		// at session end, so a post-handler log would record stale times.
+		log.Printf("api sub=%s route=%s", id.Sub, r.URL.Path)
+
 		ctx := context.WithValue(r.Context(), identityKey{}, id)
 		next.ServeHTTP(w, r.WithContext(ctx))
-		log.Printf("api sub=%s route=%s", id.Sub, r.URL.Path)
 	})
 }
 

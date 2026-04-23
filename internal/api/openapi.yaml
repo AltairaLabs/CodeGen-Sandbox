@@ -188,11 +188,11 @@ paths:
                 type: string
                 format: binary
         "400":
-          description: Invalid path (outside workspace) or file not found.
+          description: Invalid path (outside workspace) or directory.
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
-          $ref: "#/components/responses/NotFound"
+          description: File does not exist, or the feature flag is not enabled.
         "413":
           description: File exceeds the 2 MiB cap.
 
@@ -290,6 +290,8 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+        "405":
+          description: Method not allowed (only POST is accepted).
 
   /api/ssh-port:
     get:
@@ -311,6 +313,8 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+        "405":
+          description: Method not allowed (only GET is accepted).
 
   /api/openapi.yaml:
     get:

@@ -214,3 +214,21 @@ func TestShellQuote(t *testing.T) {
 	assert.Equal(t, "'a b'", shellQuote("a b"))
 	assert.Equal(t, `'a'\''b'`, shellQuote("a'b"))
 }
+
+// TestBuildSSHConfigBlock_QuotesUserInput guards against shell injection in
+// the generated ProxyCommand line. ssh runs the ProxyCommand through
+// /bin/sh -c, so a server URL containing shell metacharacters like `;` or
+// `$(…)` would become executable code on every ssh connection if we wrote
+// it unquoted.
+func TestBuildSSHConfigBlock_QuotesUserInput(t *testing.T) {
+	evil := `https://evil.example/;rm -rf $HOME`
+	block := buildSSHConfigBlock("demo", evil, "/home/u/.config/sandbox/keys/demo", nil)
+	// The raw (unquoted) form must not appear.
+	assert.NotContains(t, block, "--server "+evil)
+	// Quoted form must appear.
+	assert.Contains(t, block, `--server '`+evil+`'`)
+
+	// Paths with spaces must also be quoted.
+	withSpace := buildSSHConfigBlock("demo", "https://ok.example", "/home/a b/.config/keys/demo", nil)
+	assert.Contains(t, withSpace, `IdentityFile '/home/a b/.config/keys/demo'`)
+}

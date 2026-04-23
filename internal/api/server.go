@@ -29,10 +29,9 @@ func (nopCloser) Close() error { return nil }
 func New(cfg Config) (http.Handler, io.Closer, error) {
 	mux := http.NewServeMux()
 
-	// Always-on self-describing endpoints: the spec catalogues the entire
-	// API surface (including features that are currently disabled by flag),
-	// so operators can discover what's possible without running every flag
-	// combo. They still go through identity middleware like everything else.
+	// Self-describing endpoints are always registered. The spec catalogues
+	// every route including -enable-* gated ones, so operators can discover
+	// the full surface without flipping flags to find it.
 	mux.HandleFunc("/api/openapi.yaml", openAPIHandler)
 	mux.HandleFunc("/api/docs", docsHandler)
 

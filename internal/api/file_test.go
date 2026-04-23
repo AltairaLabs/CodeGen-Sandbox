@@ -64,7 +64,7 @@ func TestFileHandler_OutsideWorkspace_Returns400(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, rr.Code)
 }
 
-func TestFileHandler_MissingFile_Returns400(t *testing.T) {
+func TestFileHandler_MissingFile_Returns404(t *testing.T) {
 	dir := t.TempDir()
 	ws, err := workspace.New(dir)
 	require.NoError(t, err)
@@ -73,7 +73,7 @@ func TestFileHandler_MissingFile_Returns400(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/api/file?path=nope.txt", nil)
 	fileHandler(ws).ServeHTTP(rr, req)
 
-	assert.Equal(t, http.StatusBadRequest, rr.Code)
+	assert.Equal(t, http.StatusNotFound, rr.Code)
 }
 
 func TestFileHandler_TooLarge_Returns413(t *testing.T) {

@@ -280,7 +280,15 @@ func (s *sshServer) runExec(sess gliderssh.Session, cmd *exec.Cmd) (int, error) 
 		_ = stdin.Close()
 	}()
 
-	return waitExit(cmd), nil
+	code := waitExit(cmd)
+	// Deterministically unblock the stdin-pump goroutine: the child is
+	// gone so its stdin pipe reader is closed, but the goroutine is still
+	// blocked reading from sess. Closing stdin is a no-op (already closed
+	// by the goroutine's EOF path or still held by it); the real unblock
+	// happens when gliderlabs tears down the session after we return. The
+	// explicit close here just makes the teardown order deterministic.
+	_ = stdin.Close()
+	return code, nil
 }
 
 // waitExit returns cmd's exit code, or -1 if it could not be started.

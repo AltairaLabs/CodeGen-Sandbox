@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/fs"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -94,8 +95,16 @@ func eventsHandler(ws *workspace.Workspace) http.Handler {
 					return
 				}
 				flusher.Flush()
-			case <-watcher.Errors:
-				// Swallow watcher errors; client keeps stream open.
+			case werr, ok := <-watcher.Errors:
+				// Keep the stream open even when the watcher reports an
+				// error (permissions, watch-limit exhaustion, ...). Log so
+				// operators can see degraded behaviour.
+				if !ok {
+					return
+				}
+				if werr != nil {
+					log.Printf("api events watcher error: %v", werr)
+				}
 			case <-ping.C:
 				if _, err := fmt.Fprint(w, ": ping\n\n"); err != nil {
 					return

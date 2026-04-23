@@ -50,7 +50,7 @@ func fileHandler(ws *workspace.Workspace) http.Handler {
 		info, err := os.Stat(abs)
 		if err != nil {
 			if errors.Is(err, os.ErrNotExist) {
-				http.Error(w, "file not found", http.StatusBadRequest)
+				http.Error(w, "file not found", http.StatusNotFound)
 				return
 			}
 			http.Error(w, "stat: "+err.Error(), http.StatusInternalServerError)

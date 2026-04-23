@@ -289,6 +289,45 @@ func TestProxy_Stdio_Echo(t *testing.T) {
 	}
 }
 
+// TestProxy_Stdio_RemoteClose_UnblocksStdinPump guards the fix for a hang
+// where the remote closing the WebSocket left the in→WS pump blocked on
+// an uncancellable Read (os.Stdin / io.Pipe). runStdioTunnel must close
+// the input reader when WS→out returns.
+func TestProxy_Stdio_RemoteClose_UnblocksStdinPump(t *testing.T) {
+	// A handler that accepts the WS, reads nothing, and closes immediately.
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		c, err := websocket.Accept(w, r, nil)
+		if err != nil {
+			return
+		}
+		_ = c.Close(websocket.StatusNormalClosure, "bye")
+	})
+	srv := httptest.NewServer(handler)
+	t.Cleanup(srv.Close)
+
+	wsURL, err := buildPortForwardURL(srv.URL, 8080)
+	require.NoError(t, err)
+
+	// stdinW is never closed by the test. If the fix regresses,
+	// runStdioTunnel blocks forever on stdinR.Read.
+	stdinR, stdinW := io.Pipe()
+	t.Cleanup(func() { _ = stdinW.Close() })
+	var stdout syncBuffer
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	t.Cleanup(cancel)
+
+	done := make(chan error, 1)
+	go func() { done <- runStdioTunnel(ctx, wsURL, http.Header{}, stdinR, &stdout) }()
+
+	select {
+	case <-done:
+		// Good: function returned after remote close even though stdin is still open.
+	case <-time.After(2 * time.Second):
+		t.Fatal("runStdioTunnel did not return after remote close; in-pump likely stuck on stdin Read")
+	}
+}
+
 func TestProxy_SSH_ResolvesPort(t *testing.T) {
 	echoPort := startEchoTCPServer(t)
 	fake := newFakeServer(echoPort)

@@ -255,6 +255,13 @@ func tunnelConn(ctx context.Context, wsTarget string, headers http.Header, in io
 		for {
 			typ, data, rerr := c.Read(tunnelCtx)
 			if rerr != nil {
+				// Unblock the in-pump's Read: os.Stdin / net.Conn / io.Pipe
+				// all implement io.Closer and calling Close returns EOF from
+				// an in-flight Read. Without this, a remote-initiated close
+				// leaves the in-pump blocked until the user types something.
+				if closer, ok := in.(io.Closer); ok {
+					_ = closer.Close()
+				}
 				cancel()
 				return
 			}
