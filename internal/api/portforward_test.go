@@ -10,7 +10,7 @@ import (
 	"net/http/httptest"
 	"runtime"
 	"strconv"
-	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -18,32 +18,37 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// startEchoServer starts a trivial TCP echo server on 127.0.0.1 and returns its
-// port plus a WaitGroup that the test can use to confirm the accept loop has
-// exited (i.e. no connection goroutines leaked).
-func startEchoServer(t *testing.T) (port int, accepted *sync.WaitGroup) {
+// startEchoServer starts a trivial TCP echo server on 127.0.0.1 and returns
+// its port plus an atomic counter tracking the number of currently-live
+// per-connection goroutines. Tests poll the counter to 0 to confirm the TCP
+// side was closed when the client's WS closed.
+//
+// An sync.WaitGroup used to be fine here, but -race flags a concurrent
+// Add/Wait when the counter transiently hits 0 between accepts — atomic
+// avoids that entirely since tests poll by Load() rather than Wait().
+func startEchoServer(t *testing.T) (port int, active *atomic.Int32) {
 	t.Helper()
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = ln.Close() })
 
-	accepted = &sync.WaitGroup{}
+	active = &atomic.Int32{}
 	go func() {
 		for {
 			conn, err := ln.Accept()
 			if err != nil {
 				return
 			}
-			accepted.Add(1)
+			active.Add(1)
 			go func(c net.Conn) {
-				defer accepted.Done()
+				defer active.Add(-1)
 				defer func() { _ = c.Close() }()
 				_, _ = io.Copy(c, c)
 			}(conn)
 		}
 	}()
 
-	return ln.Addr().(*net.TCPAddr).Port, accepted
+	return ln.Addr().(*net.TCPAddr).Port, active
 }
 
 // freeClosedPort returns a port that was momentarily bound and then closed, so
@@ -179,16 +184,11 @@ func TestPortForward_ClientClosesFirst_NoGoroutineLeak(t *testing.T) {
 
 	// Also wait for the echo server's per-connection handlers to exit —
 	// confirms the TCP side was closed when the WS closed.
-	done := make(chan struct{})
-	go func() {
-		accepted.Wait()
-		close(done)
-	}()
-	select {
-	case <-done:
-	case <-time.After(3 * time.Second):
-		t.Fatal("echo server connections still open — TCP not closed after WS close")
+	deadlineActive := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadlineActive) && accepted.Load() > 0 {
+		time.Sleep(25 * time.Millisecond)
 	}
+	require.Zerof(t, accepted.Load(), "echo server connections still open — TCP not closed after WS close")
 
 	after := runtime.NumGoroutine()
 	// Allow a small slack for runtime-managed goroutines.
