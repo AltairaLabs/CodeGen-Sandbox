@@ -110,9 +110,16 @@ func runExecSession(ctx context.Context, c *websocket.Conn, workdir string, onSt
 		return c.Write(ctx, websocket.MessageText, b)
 	}
 
+	// Pump goroutines are tracked by a WaitGroup so we can cleanly drain
+	// both at handler exit. Errors surface on buffered channels — only the
+	// first event matters for the main select, which is why they're sized 1.
+	var pumpWG sync.WaitGroup
+	pumpWG.Add(2)
+
 	// PTY → WS pump.
 	ptyDone := make(chan error, 1)
 	go func() {
+		defer pumpWG.Done()
 		buf := make([]byte, 32*1024)
 		for {
 			n, err := ptmx.Read(buf)
@@ -141,6 +148,7 @@ func runExecSession(ctx context.Context, c *websocket.Conn, workdir string, onSt
 	// (ptyDone) or (b) this loop exits on its own.
 	wsDone := make(chan error, 1)
 	go func() {
+		defer pumpWG.Done()
 		for {
 			typ, data, err := c.Read(ctx)
 			if err != nil {
@@ -230,9 +238,12 @@ func runExecSession(ctx context.Context, c *websocket.Conn, workdir string, onSt
 	}
 	_ = c.Close(websocket.StatusNormalClosure, "")
 
-	// Drain both pump goroutines so they don't outlive the handler.
-	<-ptyDone
-	<-wsDone
+	// Drain both pump goroutines so they don't outlive the handler. Using a
+	// WaitGroup (vs receiving from each error channel) avoids a deadlock:
+	// the error channels are buffered-by-1 and each goroutine sends once,
+	// so the channel whose value we already consumed in the select above
+	// has no further writer and a second receive would block forever.
+	pumpWG.Wait()
 	return code, sessionErr
 }
 
