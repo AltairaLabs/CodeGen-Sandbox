@@ -20,14 +20,13 @@
 # See examples/ for ready-made Dockerfile.python / Dockerfile.node /
 # Dockerfile.rust templates.
 
-# Build the tools artifact in-repo so this image is self-contained.
-# In production, operators would reference a published tag instead.
-FROM scratch AS tools
-ARG TOOLS_IMAGE=codegen-sandbox-tools:dev
-# Placeholder — the Makefile `docker-build` target builds Dockerfile.tools
-# first, then this file as two separate stages joined via --build-context.
-
 # -------- Runtime: Go base + sandbox tools + golangci-lint --------
+#
+# The `COPY --from=codegen-sandbox-tools:dev` lines below reference the
+# tools artifact image. Locally, `make docker-build` builds Dockerfile.tools
+# first and tags it `codegen-sandbox-tools:dev`. In CI's release workflow,
+# buildx's --build-context remaps that name to the freshly-published
+# `ghcr.io/altairalabs/codegen-sandbox-tools:<tag>` multi-arch manifest.
 FROM golang:1.25-alpine
 
 ARG GOLANGCI_LINT_VERSION=v2.6.0
