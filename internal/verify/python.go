@@ -50,6 +50,10 @@ func (*pythonDetector) ParseLint(stdout, _ string) []LintFinding {
 // last_test_failures surfaces a "not supported for python" result.
 func (*pythonDetector) ParseTestFailures(_, _ string) []TestFailure { return nil }
 
+// LSPCommand returns nil: pyright / pylsp land in a follow-up issue
+// alongside codegen-sandbox-tools-python bundling.
+func (*pythonDetector) LSPCommand() []string { return nil }
+
 // parseLintRegex is the shared implementation for regex-based per-line
 // finding extraction. Named subexpressions `file`, `line`, `col`, `rule`,
 // `msg` are looked up; others are ignored.

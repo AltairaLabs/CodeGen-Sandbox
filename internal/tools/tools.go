@@ -4,6 +4,7 @@ package tools
 import (
 	"fmt"
 
+	"github.com/altairalabs/codegen-sandbox/internal/lsp"
 	"github.com/altairalabs/codegen-sandbox/internal/workspace"
 	"github.com/mark3labs/mcp-go/mcp"
 	mcpserver "github.com/mark3labs/mcp-go/server"
@@ -22,6 +23,10 @@ type Deps struct {
 	// last_test_failures to retrieve. May be nil in tests that don't
 	// exercise that pair.
 	TestResults *TestResultStore
+	// LSPRegistry hosts one language-server subprocess per
+	// (workspace, language) pair. May be nil in tests that don't exercise
+	// LSP navigation.
+	LSPRegistry *lsp.Registry
 }
 
 // ErrorResult wraps a user-visible message as an MCP error result.

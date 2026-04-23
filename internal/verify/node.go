@@ -48,3 +48,8 @@ func (*nodeDetector) ParseLint(stdout, _ string) []LintFinding {
 // ParseTestFailures is not yet implemented for Node; returns nil so
 // last_test_failures surfaces a "not supported for node" result.
 func (*nodeDetector) ParseTestFailures(_, _ string) []TestFailure { return nil }
+
+// LSPCommand returns nil: the Node language server (typescript-language-server)
+// lands in a follow-up issue alongside codegen-sandbox-tools-node bundling.
+// Callers surface a "LSP not configured for node" error.
+func (*nodeDetector) LSPCommand() []string { return nil }
