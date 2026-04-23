@@ -111,7 +111,8 @@ Every tool / feature declares its runtime requirement. A feature whose binaries 
 | | Python | `pyright-langserver` or `pylsp` | `-python` |
 | | Node | `typescript-language-server` | `-node` |
 | | Rust | `rust-analyzer` | `-rust` |
-| AST edits / semantic search ([#10](https://github.com/AltairaLabs/CodeGen-Sandbox/issues/10), [#11](https://github.com/AltairaLabs/CodeGen-Sandbox/issues/11)) | Go (v1) | (none — stdlib `go/parser` + `go/ast` linked into the sandbox binary) | v1 ships Go only; the `internal/ast` registry leaves a slot for tree-sitter grammars to land under a build tag for Python / TS / Rust in a follow-up issue. See [AST-safe edit primitives](/tools/ast-edits/). |
+| AST edits ([#10](https://github.com/AltairaLabs/CodeGen-Sandbox/issues/10)) | Go (v1) | (none — stdlib `go/parser` + `go/ast` linked into the sandbox binary) | v1 ships Go only; the `internal/ast` registry leaves a slot for tree-sitter grammars to land under a build tag for Python / TS / Rust in a follow-up issue. See [AST-safe edit primitives](/tools/ast-edits/). |
+| Semantic search ([#11](https://github.com/AltairaLabs/CodeGen-Sandbox/issues/11)) | Go (v1) | (none — `go/ast` stdlib) | BM25 over Go symbols + docstrings; extensible per language via `internal/search/` extractor registry. Other languages follow when tree-sitter lands. |
 | Render tools ([#22](https://github.com/AltairaLabs/CodeGen-Sandbox/issues/22)) | any | `mmdc` (mermaid-cli), `dot` (graphviz) | `codegen-sandbox-tools-render` |
 | Next.js / framework scripts ([#25](https://github.com/AltairaLabs/CodeGen-Sandbox/issues/25)) | Node | `pnpm` / `yarn` / `bun` (as applicable) | `-node` (all three bundled) |
 
