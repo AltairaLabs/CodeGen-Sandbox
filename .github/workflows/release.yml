@@ -21,6 +21,7 @@ on:
 env:
   REGISTRY: ghcr.io
   TOOLS_IMAGE: ghcr.io/altairalabs/codegen-sandbox-tools
+  TOOLS_GO_IMAGE: ghcr.io/altairalabs/codegen-sandbox-tools-go
   CONVENIENCE_IMAGE: ghcr.io/altairalabs/codegen-sandbox
 
 jobs:
@@ -63,6 +64,19 @@ jobs:
           tags: |
             ${{ env.TOOLS_IMAGE }}:${{ steps.tag.outputs.value }}
             ${{ env.TOOLS_IMAGE }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build + push tools-go image (multi-arch)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.tools-go
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ env.TOOLS_GO_IMAGE }}:${{ steps.tag.outputs.value }}
+            ${{ env.TOOLS_GO_IMAGE }}:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
