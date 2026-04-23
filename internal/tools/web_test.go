@@ -79,11 +79,13 @@ func TestWebSearch_MissingQueryIsError(t *testing.T) {
 	assert.True(t, res.IsError)
 }
 
-func TestWebSearch_BackendSetButNotImplemented(t *testing.T) {
+func TestWebSearch_UnknownBackendReturnsMisconfigured(t *testing.T) {
 	deps, _ := newTestDeps(t)
-	t.Setenv("CODEGEN_SANDBOX_SEARCH_BACKEND", "brave")
+	t.Setenv("CODEGEN_SANDBOX_SEARCH_BACKEND", "nonsense")
 
 	res := callWebSearch(t, deps, map[string]any{"query": "golang"})
 	assert.True(t, res.IsError)
-	assert.Contains(t, textOf(t, res), "not yet implemented")
+	body := textOf(t, res)
+	assert.Contains(t, strings.ToLower(body), "misconfigured")
+	assert.Contains(t, body, "nonsense")
 }
