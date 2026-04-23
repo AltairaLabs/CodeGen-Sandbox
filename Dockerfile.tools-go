@@ -1,0 +1,65 @@
+# syntax=docker/dockerfile:1.7
+#
+# codegen-sandbox-tools-go — feature tools layer carrying Go-language
+# binaries that sandbox features consume on PATH.
+#
+# Contents (on `scratch`):
+#   /gopls           — Go language server (LSP navigation — issue #9)
+#   /golangci-lint   — Go linter (run_lint / post-edit feedback)
+#
+# Operator composition:
+#
+#   FROM golang:1.25-alpine
+#   COPY --from=ghcr.io/altairalabs/codegen-sandbox-tools:latest      /sandbox        /usr/local/bin/
+#   COPY --from=ghcr.io/altairalabs/codegen-sandbox-tools:latest      /rg             /usr/local/bin/
+#   COPY --from=ghcr.io/altairalabs/codegen-sandbox-tools-go:latest   /gopls          /usr/local/bin/
+#   COPY --from=ghcr.io/altairalabs/codegen-sandbox-tools-go:latest   /golangci-lint  /usr/local/bin/
+#
+# Both binaries are statically linked (CGO_ENABLED=0 for gopls, official
+# static release for golangci-lint) so they work on any glibc/musl base.
+
+# -------- gopls builder --------
+# gopls does NOT publish prebuilt release tarballs at
+# github.com/golang/tools/releases/download/gopls/<ver>/. The upstream
+# distribution channel is the Go module proxy (proxy.golang.org); fetching
+# a binary means running `go install` against a pinned version. We build
+# with CGO disabled so the result is fully static and copyable into scratch.
+# Multi-arch is handled by buildx setting GOARCH via TARGETARCH implicitly
+# through the base image's Go toolchain.
+FROM golang:1.25-alpine AS gopls-builder
+
+ARG GOPLS_VERSION=v0.21.0
+
+RUN apk add --no-cache git ca-certificates \
+    && CGO_ENABLED=0 GOBIN=/out go install \
+        -trimpath -ldflags='-s -w' \
+        golang.org/x/tools/gopls@${GOPLS_VERSION} \
+    && /out/gopls version
+
+# -------- golangci-lint fetcher --------
+# Official release ships static linux binaries for amd64 + arm64 as tarballs.
+FROM alpine:3.20.3 AS glci-fetcher
+
+ARG GOLANGCI_LINT_VERSION=v2.6.0
+ARG TARGETARCH
+
+RUN apk add --no-cache curl tar \
+    && V="${GOLANGCI_LINT_VERSION#v}" \
+    && case "${TARGETARCH}" in \
+         amd64) GL_ARCH="amd64" ;; \
+         arm64) GL_ARCH="arm64" ;; \
+         *)     echo "unsupported arch: ${TARGETARCH}"; exit 1 ;; \
+       esac \
+    && mkdir -p /out \
+    && curl -sSfL "https://github.com/golangci/golangci-lint/releases/download/${GOLANGCI_LINT_VERSION}/golangci-lint-${V}-linux-${GL_ARCH}.tar.gz" \
+       | tar -xz -C /tmp \
+    && install -m 0755 "/tmp/golangci-lint-${V}-linux-${GL_ARCH}/golangci-lint" /out/golangci-lint \
+    && /out/golangci-lint version
+
+# -------- Final: scratch + two static binaries --------
+FROM scratch
+
+COPY --from=gopls-builder /out/gopls            /gopls
+COPY --from=glci-fetcher  /out/golangci-lint    /golangci-lint
+
+# No ENTRYPOINT or CMD — artifact source, not a runtime image.

@@ -13,6 +13,8 @@ altairalabs/codegen-sandbox-tools:vX.Y.Z
 └── /rg         — ripgrep (static binary, used by Glob/Grep)
 ```
 
+For per-feature language binaries (LSP servers, linters, formatters) the sandbox also ships **feature tools layers** you can compose alongside the core tools layer — see [Feature tools layers](/operations/feature-layers/) for the current catalog (`-go` available today; `-node` / `-python` / `-rust` / `-render` landing per [#26](https://github.com/AltairaLabs/CodeGen-Sandbox/issues/26)).
+
 Your Dockerfile picks a base image with your language toolchain and COPYs the tools layer on top:
 
 ```dockerfile
