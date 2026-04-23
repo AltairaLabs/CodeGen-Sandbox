@@ -1,0 +1,58 @@
+name: Bug report
+description: Something in the sandbox, CLI, or docs isn't working as expected.
+title: "bug: "
+labels: [bug, triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug. A clear reproduction is the
+        fastest path to a fix. If this is a security issue, please use the
+        private advisory flow instead (link on the previous screen).
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Describe the bug, what you expected, and what you saw instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction
+      description: Minimal steps to reproduce. Include flags, env vars, and any MCP tool-call arguments.
+      placeholder: |
+        1. Start the sandbox with `./bin/sandbox -addr=:8080 -workspace=/tmp/ws`
+        2. Call MCP tool `Edit` with `{...}`
+        3. Observe ...
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Sandbox version / image tag
+      placeholder: "v0.1.0 | ghcr.io/altairalabs/codegen-sandbox@sha256:... | local build at commit <sha>"
+    validations:
+      required: true
+
+  - type: input
+    id: platform
+    attributes:
+      label: Host / container platform
+      placeholder: "Docker Desktop 4.38 on macOS 15.3 | k8s v1.31 on GKE | kind v0.26"
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / tool output
+      description: Stderr from the sandbox binary and/or the raw tool-call result.
+      render: shell
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Additional context
+      description: Hypotheses, workarounds you tried, related issues.
