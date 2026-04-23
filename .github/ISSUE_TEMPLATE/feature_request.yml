@@ -1,0 +1,64 @@
+name: Feature / enhancement
+description: Propose a new capability or a substantial improvement to existing behaviour.
+title: "feat: "
+labels: [enhancement, triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this for concrete, actionable proposals. For open-ended design
+        discussion, use Discussions instead. Small refinements (rename, tidy
+        a comment, tighten a test) don't need an issue — just open a PR.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What's currently painful, missing, or under-delivered?
+      placeholder: |
+        Agents doing multi-file refactors have to grep for symbol names,
+        which produces false positives on identically-named functions in
+        unrelated packages. Refactor accuracy suffers.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What should this repo add or change? Sketches, API shapes, and trade-offs welcome.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What else did you weigh, and why did you pick the proposed direction?
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Scope
+      options:
+        - "tools — new MCP tool or existing-tool behaviour"
+        - "remote-access — the human-facing /api/* surface"
+        - "verify — project detection, run_lint/tests/typecheck"
+        - "docker — image / tools-layer / k8s deployment"
+        - "cli — sandbox-forward"
+        - "docs — docs site / READMEs"
+        - "other"
+    validations:
+      required: true
+
+  - type: textarea
+    id: impact
+    attributes:
+      label: Expected impact
+      description: Who benefits (agents? operators? developers via Remote-SSH?) and how measurable is the win?
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Additional context
+      description: Links to external references, prior art in other tools (Claude Code, Cursor, etc.), related issues.
