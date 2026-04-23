@@ -2,12 +2,12 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"log"
-	"net/http"
-
-	"github.com/altairalabs/codegen-sandbox/internal/server"
-	"github.com/altairalabs/codegen-sandbox/internal/workspace"
+	"os"
+	"os/signal"
+	"syscall"
 )
 
 func main() {
@@ -15,18 +15,11 @@ func main() {
 	root := flag.String("workspace", "/workspace", "workspace root (absolute path)")
 	flag.Parse()
 
-	ws, err := workspace.New(*root)
-	if err != nil {
-		log.Fatalf("workspace: %v", err)
-	}
+	// SIGINT for Ctrl-C; SIGTERM for docker stop and most orchestrators.
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
 
-	srv, err := server.New(ws)
-	if err != nil {
-		log.Fatalf("server: %v", err)
-	}
-
-	log.Printf("codegen-sandbox listening on %s (workspace=%s)", *addr, ws.Root())
-	if err := http.ListenAndServe(*addr, srv.Handler()); err != nil {
+	if err := Run(ctx, *addr, *root); err != nil {
 		log.Fatal(err)
 	}
 }

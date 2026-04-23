@@ -1,0 +1,12 @@
+.git
+.gitignore
+.github
+bin/
+docs/
+README.md
+*.md
+*.out
+*.test
+.DS_Store
+.golangci.yml
+.claude
