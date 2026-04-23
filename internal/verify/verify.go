@@ -29,9 +29,21 @@ type Detector interface {
 // subdirectories do not count (the workspace root is the authoritative
 // anchor per the sandbox's trust-boundary model). root must be an absolute
 // path; callers should resolve the workspace root before invoking.
+//
+// Detection order is fixed: Go, Rust, Node, Python. Where a project has
+// multiple markers (e.g. a Go service with a frontend `package.json`), the
+// first match wins. Operators whose workspaces contain unusual combinations
+// can set up separate workspace roots per language.
 func Detect(root string) Detector {
-	if fileExists(filepath.Join(root, "go.mod")) {
+	switch {
+	case fileExists(filepath.Join(root, "go.mod")):
 		return &goDetector{root: root}
+	case fileExists(filepath.Join(root, "Cargo.toml")):
+		return &rustDetector{root: root}
+	case fileExists(filepath.Join(root, "package.json")):
+		return &nodeDetector{root: root}
+	case fileExists(filepath.Join(root, "pyproject.toml")) || fileExists(filepath.Join(root, "setup.py")):
+		return &pythonDetector{root: root}
 	}
 	return nil
 }

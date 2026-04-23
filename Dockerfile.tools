@@ -1,0 +1,55 @@
+# syntax=docker/dockerfile:1.7
+#
+# codegen-sandbox-tools — the artifact image operators COPY into their own
+# base image alongside their language toolchain.
+#
+#   FROM python:3.11-slim
+#   COPY --from=altairalabs/codegen-sandbox-tools:v0.1.0 /sandbox /usr/local/bin/sandbox
+#   COPY --from=altairalabs/codegen-sandbox-tools:v0.1.0 /rg /usr/local/bin/rg
+#   ENTRYPOINT ["/usr/local/bin/sandbox"]
+#
+# The final image contains only static binaries on `scratch` — ~15 MB total.
+
+# -------- Builder: compiles the sandbox binary --------
+FROM golang:1.25-alpine AS builder
+
+WORKDIR /src
+RUN apk add --no-cache git
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+RUN CGO_ENABLED=0 GOOS=linux go build \
+    -trimpath -ldflags='-s -w' \
+    -o /out/sandbox ./cmd/sandbox
+
+# -------- Ripgrep: we want a statically linked rg on scratch --------
+# Alpine's rg is dynamically linked against musl; that's fine when the
+# consumer image is Alpine, but we want a portable static binary so it works
+# on glibc-based consumer images too. Download the official static build.
+FROM alpine:3.20.3 AS rg-fetcher
+
+ARG RIPGREP_VERSION=14.1.0
+ARG TARGETARCH=amd64
+
+RUN apk add --no-cache curl tar \
+    && case "${TARGETARCH}" in \
+         amd64) RG_TARGET="x86_64-unknown-linux-musl" ;; \
+         arm64) RG_TARGET="aarch64-unknown-linux-gnu" ;; \
+         *)     echo "unsupported arch: ${TARGETARCH}"; exit 1 ;; \
+       esac \
+    && mkdir -p /out \
+    && curl -sSfL "https://github.com/BurntSushi/ripgrep/releases/download/${RIPGREP_VERSION}/ripgrep-${RIPGREP_VERSION}-${RG_TARGET}.tar.gz" \
+       | tar -xz -C /tmp \
+    && install -m 0755 "/tmp/ripgrep-${RIPGREP_VERSION}-${RG_TARGET}/rg" /out/rg \
+    && /out/rg --version | head -1
+
+# -------- Final: scratch + two static binaries --------
+FROM scratch
+
+COPY --from=builder /out/sandbox /sandbox
+COPY --from=rg-fetcher /out/rg /rg
+
+# No ENTRYPOINT or CMD — this image is an artifact source, not a runtime
+# image. Operators COPY the binaries into their own base image.

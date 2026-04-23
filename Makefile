@@ -1,6 +1,11 @@
-.PHONY: build test lint fmt tidy docker-build docker-run docker-clean
+.PHONY: build test lint fmt tidy \
+        docker-build-tools docker-build docker-run docker-clean \
+        docker-build-python docker-build-node docker-build-rust
 
+# The Go-language convenience image.
 IMAGE ?= codegen-sandbox:dev
+# The tools artifact image the convenience images COPY binaries from.
+TOOLS_IMAGE ?= codegen-sandbox-tools:dev
 
 build:
 	go build -o bin/sandbox ./cmd/sandbox
@@ -18,7 +23,13 @@ fmt:
 tidy:
 	go mod tidy
 
-docker-build:
+# Build the minimal artifact image (scratch + /sandbox + /rg).
+docker-build-tools:
+	docker build -f Dockerfile.tools -t $(TOOLS_IMAGE) .
+
+# Build the Go convenience image — requires docker-build-tools first (the
+# main Dockerfile COPYs from codegen-sandbox-tools:dev).
+docker-build: docker-build-tools
 	docker build -t $(IMAGE) .
 
 docker-run:
@@ -28,5 +39,18 @@ docker-run:
 		-v /tmp/codegen-sandbox-workspace:/workspace \
 		$(IMAGE)
 
+# Per-language example convenience images — each requires the tools image.
+docker-build-python: docker-build-tools
+	docker build -f examples/Dockerfile.python -t codegen-sandbox-python:dev .
+
+docker-build-node: docker-build-tools
+	docker build -f examples/Dockerfile.node -t codegen-sandbox-node:dev .
+
+docker-build-rust: docker-build-tools
+	docker build -f examples/Dockerfile.rust -t codegen-sandbox-rust:dev .
+
 docker-clean:
-	docker rmi $(IMAGE) 2>/dev/null || true
+	docker rmi $(IMAGE) $(TOOLS_IMAGE) \
+		codegen-sandbox-python:dev \
+		codegen-sandbox-node:dev \
+		codegen-sandbox-rust:dev 2>/dev/null || true

@@ -1,0 +1,41 @@
+# syntax=docker/dockerfile:1.7
+#
+# Example: a Rust workspace image using the codegen-sandbox tools layer.
+#
+# Build:
+#   docker build -f examples/Dockerfile.rust -t my-org/codegen-sandbox-rust .
+#
+# Run:
+#   docker run --rm -p 8080:8080 -v /host/workspace:/workspace \
+#     my-org/codegen-sandbox-rust
+
+FROM rust:1.82
+
+# `rust:1.82` (debian-based) ships cargo, rustc, and rustfmt but NOT
+# clippy — add it here. The sandbox's rustDetector expects clippy on
+# PATH for run_lint to succeed.
+RUN rustup component add clippy \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends bash git make ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Sandbox tools layer.
+COPY --from=altairalabs/codegen-sandbox-tools:latest /sandbox /usr/local/bin/sandbox
+COPY --from=altairalabs/codegen-sandbox-tools:latest /rg /usr/local/bin/rg
+
+# Unprivileged user.
+RUN groupadd -r sandbox \
+    && useradd -r -g sandbox -d /home/sandbox -m sandbox \
+    && mkdir -p /workspace /home/sandbox/.cargo \
+    && chown -R sandbox:sandbox /workspace /home/sandbox
+
+USER sandbox
+WORKDIR /workspace
+
+ENV CARGO_HOME=/home/sandbox/.cargo
+ENV PATH="${CARGO_HOME}/bin:${PATH}"
+
+EXPOSE 8080
+
+ENTRYPOINT ["/usr/local/bin/sandbox"]
+CMD ["-addr=:8080", "-workspace=/workspace"]
