@@ -167,9 +167,18 @@ func (s *sshServer) Close() error {
 	if s.srv == nil {
 		return nil
 	}
+	// Close the listener we own first so the Serve goroutine's Accept()
+	// unblocks deterministically. gliderlabs/ssh's Server.Close also tries
+	// to close tracked listeners, but empirically that path has flaked on
+	// Linux CI — a double-close here is harmless.
+	_ = s.listener.Close()
 	err := s.srv.Close()
-	// Drain the serve goroutine so the test doesn't leak it.
-	<-s.serveErr
+	// Drain the serve goroutine. Time-bounded so a stuck Serve doesn't
+	// leak the test runner's timeout budget.
+	select {
+	case <-s.serveErr:
+	case <-time.After(5 * time.Second):
+	}
 	return err
 }
 
