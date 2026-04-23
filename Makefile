@@ -1,4 +1,4 @@
-.PHONY: build test lint fmt tidy \
+.PHONY: build build-forward test lint fmt tidy \
         docker-build-tools docker-build docker-run docker-clean \
         docker-build-python docker-build-node docker-build-rust
 
@@ -7,8 +7,11 @@ IMAGE ?= codegen-sandbox:dev
 # The tools artifact image the convenience images COPY binaries from.
 TOOLS_IMAGE ?= codegen-sandbox-tools:dev
 
-build:
+build: build-forward
 	go build -o bin/sandbox ./cmd/sandbox
+
+build-forward:
+	go build -o bin/sandbox-forward ./cmd/sandbox-forward
 
 test:
 	go test ./...
