@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"time"
@@ -20,10 +21,10 @@ const (
 )
 
 // Run starts the sandbox MCP server on addr and, if apiAddr is non-empty and
-// any of enableAPI/enableExec/enablePortForward is true, a second HTTP
-// listener exposing the human-facing /api/* routes on apiAddr. Both listeners
-// drain on ctx cancellation within a bounded grace window.
-func Run(ctx context.Context, addr, apiAddr, workspaceRoot string, devMode, enableAPI, enableExec, enablePortForward bool) error {
+// any of enableAPI/enableExec/enablePortForward/enableSSH is true, a second
+// HTTP listener exposing the human-facing /api/* routes on apiAddr. Both
+// listeners drain on ctx cancellation within a bounded grace window.
+func Run(ctx context.Context, addr, apiAddr, workspaceRoot string, devMode, enableAPI, enableExec, enablePortForward, enableSSH bool) error {
 	ws, err := workspace.New(workspaceRoot)
 	if err != nil {
 		return fmt.Errorf("workspace: %w", err)
@@ -44,16 +45,23 @@ func Run(ctx context.Context, addr, apiAddr, workspaceRoot string, devMode, enab
 	log.Printf("codegen-sandbox listening on %s (workspace=%s)", addr, ws.Root())
 
 	var apiSrv *http.Server
-	if apiAddr != "" && (enableAPI || enableExec || enablePortForward) {
+	var apiCloser io.Closer
+	if apiAddr != "" && (enableAPI || enableExec || enablePortForward || enableSSH) {
+		handler, closer, err := api.New(api.Config{
+			Workspace:         ws,
+			DevMode:           devMode,
+			EnableAPI:         enableAPI,
+			EnableExec:        enableExec,
+			EnablePortForward: enablePortForward,
+			EnableSSH:         enableSSH,
+		})
+		if err != nil {
+			return fmt.Errorf("api: %w", err)
+		}
+		apiCloser = closer
 		apiSrv = &http.Server{
-			Addr: apiAddr,
-			Handler: api.New(api.Config{
-				Workspace:         ws,
-				DevMode:           devMode,
-				EnableAPI:         enableAPI,
-				EnableExec:        enableExec,
-				EnablePortForward: enablePortForward,
-			}),
+			Addr:              apiAddr,
+			Handler:           handler,
 			ReadHeaderTimeout: readHeaderTimeout,
 			IdleTimeout:       idleTimeout,
 		}
@@ -85,6 +93,11 @@ func Run(ctx context.Context, addr, apiAddr, workspaceRoot string, devMode, enab
 	if apiSrv != nil {
 		if err := apiSrv.Shutdown(shutdownCtx); err != nil && firstErr == nil {
 			firstErr = fmt.Errorf("api shutdown: %w", err)
+		}
+	}
+	if apiCloser != nil {
+		if err := apiCloser.Close(); err != nil && firstErr == nil {
+			firstErr = fmt.Errorf("api closer: %w", err)
 		}
 	}
 

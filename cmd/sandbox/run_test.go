@@ -15,7 +15,7 @@ func TestRun_CancelledContextExitsCleanly(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		done <- Run(ctx, "127.0.0.1:0", "", dir, false, false, false, false)
+		done <- Run(ctx, "127.0.0.1:0", "", dir, false, false, false, false, false)
 	}()
 
 	// Give the server a beat to bind, then cancel.
@@ -31,7 +31,7 @@ func TestRun_CancelledContextExitsCleanly(t *testing.T) {
 }
 
 func TestRun_InvalidWorkspaceReturnsError(t *testing.T) {
-	err := Run(context.Background(), "127.0.0.1:0", "", "/nonexistent/codegen-sandbox-test-root", false, false, false, false)
+	err := Run(context.Background(), "127.0.0.1:0", "", "/nonexistent/codegen-sandbox-test-root", false, false, false, false, false)
 	require.Error(t, err)
 }
 
@@ -41,7 +41,7 @@ func TestRun_WithAPIListener_CancelledContextExitsCleanly(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		done <- Run(ctx, "127.0.0.1:0", "127.0.0.1:0", dir, true, true, false, false)
+		done <- Run(ctx, "127.0.0.1:0", "127.0.0.1:0", dir, true, true, false, false, false)
 	}()
 
 	time.Sleep(100 * time.Millisecond)
@@ -50,6 +50,27 @@ func TestRun_WithAPIListener_CancelledContextExitsCleanly(t *testing.T) {
 	select {
 	case err := <-done:
 		assert.NoError(t, err, "Run with API listener should exit cleanly on ctx cancel")
+	case <-time.After(5 * time.Second):
+		t.Fatal("Run did not return within 5s of ctx cancel")
+	}
+}
+
+func TestRun_WithSSH_CancelledContextExitsCleanly(t *testing.T) {
+	dir := t.TempDir()
+	ctx, cancel := context.WithCancel(context.Background())
+
+	done := make(chan error, 1)
+	go func() {
+		// Only SSH enabled; api listener still mounts because enableSSH=true.
+		done <- Run(ctx, "127.0.0.1:0", "127.0.0.1:0", dir, true, false, false, false, true)
+	}()
+
+	time.Sleep(100 * time.Millisecond)
+	cancel()
+
+	select {
+	case err := <-done:
+		assert.NoError(t, err, "Run with SSH should exit cleanly on ctx cancel")
 	case <-time.After(5 * time.Second):
 		t.Fatal("Run did not return within 5s of ctx cancel")
 	}

@@ -1,26 +1,32 @@
 package api
 
 import (
+	"io"
 	"net/http"
 
 	"github.com/altairalabs/codegen-sandbox/internal/workspace"
 )
 
-// Config bundles the inputs needed to build the API handler. Later tasks will
-// add fields for port-forward/ssh toggles and a shell registry; for now only
-// the read-only surface plus optional exec is exposed.
+// Config bundles the inputs needed to build the API handler.
 type Config struct {
 	Workspace         *workspace.Workspace
 	DevMode           bool
 	EnableAPI         bool // tree/file/events
 	EnableExec        bool // /api/exec (WebSocket PTY)
 	EnablePortForward bool // /api/port-forward (WebSocket TCP tunnel to 127.0.0.1:<port>)
+	EnableSSH         bool // embedded SSH server + /api/ssh-authorized-keys + /api/ssh-port
 }
 
-// New returns an http.Handler mounting the API routes at /api/*. All routes
-// are wrapped in the identity middleware. Routes whose backing feature flag
-// is false are not registered.
-func New(cfg Config) http.Handler {
+// nopCloser is returned when New has no background resource to close.
+type nopCloser struct{}
+
+func (nopCloser) Close() error { return nil }
+
+// New returns an http.Handler mounting the API routes at /api/* and a Closer
+// that releases any background resources (currently: the embedded SSH
+// listener when EnableSSH is true). All routes are wrapped in the identity
+// middleware. Routes whose backing feature flag is false are not registered.
+func New(cfg Config) (http.Handler, io.Closer, error) {
 	mux := http.NewServeMux()
 	if cfg.EnableAPI && cfg.Workspace != nil {
 		mux.Handle("/api/tree", treeHandler(cfg.Workspace))
@@ -33,5 +39,17 @@ func New(cfg Config) http.Handler {
 	if cfg.EnablePortForward {
 		mux.Handle("/api/port-forward", portForwardHandler())
 	}
-	return WithIdentity(cfg.DevMode, mux)
+
+	var closer io.Closer = nopCloser{}
+	if cfg.EnableSSH && cfg.Workspace != nil {
+		ssh, err := newSSHServer(cfg.Workspace)
+		if err != nil {
+			return nil, nil, err
+		}
+		mux.Handle("/api/ssh-authorized-keys", authorizedKeysHandler(ssh.keys))
+		mux.Handle("/api/ssh-port", sshPortHandler(ssh))
+		closer = ssh
+	}
+
+	return WithIdentity(cfg.DevMode, mux), closer, nil
 }
