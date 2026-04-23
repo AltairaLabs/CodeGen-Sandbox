@@ -69,11 +69,69 @@ A subset of the roadmap is intentionally language-agnostic and carries **no** pe
 
 Prioritise these for PRs that don't need to pull tree-sitter grammars or language-server binaries into the tools-layer image.
 
-## Operator: strip unused languages
+## Image composition model
 
-The tools-layer image ships with the full Detector set, which means `rustfmt`, `ruff`, `eslint`, `golangci-lint`, and eventually tree-sitter grammars / LSP binaries for all four. For operators who only target one language, that's dead weight.
+**The sandbox never bundles a language runtime.** The operator composes their container image from three layers:
 
-The tools-layer pattern (see [Docker operations](/operations/docker/)) lets you **fork the Dockerfile and delete the binaries you don't need**. The sandbox degrades gracefully: `Detect` returns a subset based on markers present in the workspace, and only the matching Detectors get used.
+1. **Base image** — their language choice: `golang:1.25-alpine`, `node:22-alpine`, `python:3.11-slim`, `rust:1.83-slim`, etc. Carries the language runtime + its stock package manager (go, npm, pip, cargo).
+2. **Sandbox tools layer** (`ghcr.io/altairalabs/codegen-sandbox-tools`) — scratch image with exactly two binaries: `/sandbox` and `/rg`. Always `COPY --from=`'d.
+3. **Feature tools layers** (planned — see [#26](https://github.com/AltairaLabs/CodeGen-Sandbox/issues/26)) — per-feature scratch images carrying binaries that particular features need: `gopls` for LSP navigation, `pnpm` / `typescript-language-server` / `prettier` for Node tooling, `ruff` for Python format, `mmdc` / `dot` for render tools, etc. Operator `COPY --from=`'s the ones they want. Each layer is small (MBs, not GBs) so composing several is cheap.
+
+Example — a Next.js project with LSP + formatter + framework support:
+
+```dockerfile
+FROM node:22-alpine
+
+COPY --from=ghcr.io/altairalabs/codegen-sandbox-tools:latest /sandbox /usr/local/bin/
+COPY --from=ghcr.io/altairalabs/codegen-sandbox-tools:latest /rg /usr/local/bin/
+
+# Feature layers — only the ones the Next.js path cares about.
+COPY --from=ghcr.io/altairalabs/codegen-sandbox-tools-node:latest /pnpm /usr/local/bin/
+COPY --from=ghcr.io/altairalabs/codegen-sandbox-tools-node:latest /typescript-language-server /usr/local/bin/
+COPY --from=ghcr.io/altairalabs/codegen-sandbox-tools-node:latest /prettier /usr/local/bin/
+
+WORKDIR /workspace
+ENTRYPOINT ["/usr/local/bin/sandbox"]
+```
+
+### Feature → runtime-binary matrix
+
+Every tool / feature declares its runtime requirement. A feature whose binaries aren't present returns a **clear, actionable error** ("`gopls` not found on PATH") — never a silent no-op.
+
+| Capability | Language | Binaries | Notes |
+|---|---|---|---|
+| `run_tests` / `run_lint` / `run_typecheck` | Go | `go`, `golangci-lint` | In `codegen-sandbox-tools-go` |
+| | Node | `npm` (or `pnpm` / `yarn` / `bun`), `eslint`, `tsc` (project-local via `npx`) | Core PMs in `-node`; eslint/tsc via project deps |
+| | Python | `pytest`, `ruff`, `mypy` (project-local) | In `-python` |
+| | Rust | `cargo`, `clippy`, `rustfmt` | `-rust` (rustfmt ships with toolchain) |
+| Post-edit format ([#14](https://github.com/AltairaLabs/CodeGen-Sandbox/issues/14)) | Python | `ruff` | `-python` |
+| | Node | `prettier` | `-node` (or project-local) |
+| | Rust | `rustfmt` | `-rust` |
+| LSP navigation ([#9](https://github.com/AltairaLabs/CodeGen-Sandbox/issues/9)) | Go | `gopls` | `-go` |
+| | Python | `pyright-langserver` or `pylsp` | `-python` |
+| | Node | `typescript-language-server` | `-node` |
+| | Rust | `rust-analyzer` | `-rust` |
+| AST edits / semantic search ([#10](https://github.com/AltairaLabs/CodeGen-Sandbox/issues/10), [#11](https://github.com/AltairaLabs/CodeGen-Sandbox/issues/11)) | any | (none — tree-sitter grammars linked into the sandbox binary) | No new runtime binaries |
+| Render tools ([#22](https://github.com/AltairaLabs/CodeGen-Sandbox/issues/22)) | any | `mmdc` (mermaid-cli), `dot` (graphviz) | `codegen-sandbox-tools-render` |
+| Next.js / framework scripts ([#25](https://github.com/AltairaLabs/CodeGen-Sandbox/issues/25)) | Node | `pnpm` / `yarn` / `bun` (as applicable) | `-node` (all three bundled) |
+
+### Operator: strip unused capabilities
+
+- Want only Go + LSP? COPY from `-go` only; skip `-node` / `-python` / `-rust`.
+- Want Node without LSP? COPY `/pnpm` but not `/typescript-language-server`. The feature layers are structured so individual binaries are copyable independently.
+- Want the bleeding edge of one binary? Don't COPY from our layer — `RUN apk add ...` it yourself.
+
+### Operator: add a new language
+
+1. Open an issue describing the target (marker file, lint/test/typecheck commands, runtime binaries it needs).
+2. Implement a `Detector` in `internal/verify/<language>.go`.
+3. Extend `verify.Detect` to recognise the new marker.
+4. Define the runtime-binary set in the Detector (e.g. `LintCmd() []string{"my-linter", ...}`).
+5. Provide (or fork) a feature tools layer image carrying `my-linter` for operators who want it.
+6. Add per-language test fixtures under `internal/verify/<language>_test.go`.
+7. Extend any language-coupled tools you care about (structured failures, coverage, format) — each takes its own `Detector` method.
+
+The sandbox binary does not need to recompile when you add a language via an image fork — the Detector interface is the recompile-free boundary **only if** the language-coupled tools you want are already implemented for whatever Detector shape you're providing. Adding a brand-new language + brand-new language-coupled tool is a two-PR exercise.
 
 ## Operator: add a new language
 
