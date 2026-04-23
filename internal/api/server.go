@@ -39,6 +39,7 @@ func New(cfg Config) (http.Handler, io.Closer, error) {
 		mux.Handle("/api/tree", treeHandler(cfg.Workspace))
 		mux.Handle("/api/file", fileHandler(cfg.Workspace))
 		mux.Handle("/api/events", eventsHandler(cfg.Workspace))
+		mux.Handle("/api/download", downloadHandler(cfg.Workspace))
 	}
 	if cfg.EnableExec && cfg.Workspace != nil {
 		mux.Handle("/api/exec", execHandler(cfg.Workspace))

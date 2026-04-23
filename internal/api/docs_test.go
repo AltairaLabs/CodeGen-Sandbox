@@ -68,6 +68,7 @@ func TestOpenAPISpec_PathsMatchServer(t *testing.T) {
 		"/api/tree",
 		"/api/file",
 		"/api/events",
+		"/api/download",
 		"/api/exec",
 		"/api/port-forward",
 		"/api/ssh-authorized-keys",
