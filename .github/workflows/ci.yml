@@ -96,7 +96,12 @@ jobs:
       - name: Extract binaries
         run: |
           set -euo pipefail
-          docker create --name extract codegen-sandbox-tools:ci
+          # --entrypoint override: Dockerfile.tools targets `scratch` and
+          # deliberately has no CMD/ENTRYPOINT (it's an artifact source,
+          # not a runtime image). `docker create` refuses images that
+          # lack a command; overriding with /sandbox satisfies docker
+          # without starting anything.
+          docker create --name extract --entrypoint /sandbox codegen-sandbox-tools:ci
           docker cp extract:/sandbox /tmp/sandbox
           docker cp extract:/rg /tmp/rg
           docker rm extract
