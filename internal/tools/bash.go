@@ -99,7 +99,10 @@ func parseBashTimeout(args map[string]any) int {
 }
 
 func newBashForegroundCmd(ctx context.Context, dir, command string) *exec.Cmd {
-	cmd := exec.CommandContext(ctx, "bash", "-c", command)
+	// Absolute path — don't resolve "bash" via $PATH. The image ships
+	// /bin/bash; relying on $PATH means a poisoned PATH entry could redirect
+	// every tool call (sonar: gosecurity:S4036).
+	cmd := exec.CommandContext(ctx, "/bin/bash", "-c", command)
 	cmd.Dir = dir
 	// Stdin = nil routes the child's stdin to /dev/null (per exec.Cmd
 	// docs); bash reads EOF immediately. Env is inherited — the container
@@ -198,7 +201,8 @@ func handleBashBackground(deps *Deps, command string) (*mcp.CallToolResult, erro
 	sh := NewBackgroundShell(id, command)
 	deps.Shells.Register(sh)
 
-	cmd := exec.Command("bash", "-c", command)
+	// Absolute path — see newBashForegroundCmd for why.
+	cmd := exec.Command("/bin/bash", "-c", command)
 	cmd.Dir = deps.Workspace.Root()
 	cmd.Stdin = nil
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
