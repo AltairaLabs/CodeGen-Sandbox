@@ -55,6 +55,17 @@ sandbox \
 
 Each flag is independent — an operator who only wants file tree + raw TCP can skip `-enable-ssh` and `-enable-exec`.
 
+## Discoverability: OpenAPI spec + Scalar UI
+
+Two self-describing endpoints are always mounted when `-api-addr` is set (both are still gated by identity middleware):
+
+| Route | Serves |
+|---|---|
+| `GET /api/openapi.yaml` | The embedded OpenAPI 3.1 spec (canonical source of truth). |
+| `GET /api/docs` | A [Scalar](https://github.com/scalar/scalar) rendering of the spec. Loads the Scalar bundle from `cdn.jsdelivr.net`. |
+
+The spec documents every route — including features gated behind `-enable-*` flags that may be off in a given deployment. Disabled routes return `404`; the spec still lists them so operators can discover the full surface. A drift test (`internal/api/docs_test.go`) keeps the spec and the server's route table in lock-step in CI.
+
 ## Identity header contract
 
 The routing service MUST set three headers on every request it forwards:

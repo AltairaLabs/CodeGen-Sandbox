@@ -28,6 +28,14 @@ func (nopCloser) Close() error { return nil }
 // middleware. Routes whose backing feature flag is false are not registered.
 func New(cfg Config) (http.Handler, io.Closer, error) {
 	mux := http.NewServeMux()
+
+	// Always-on self-describing endpoints: the spec catalogues the entire
+	// API surface (including features that are currently disabled by flag),
+	// so operators can discover what's possible without running every flag
+	// combo. They still go through identity middleware like everything else.
+	mux.HandleFunc("/api/openapi.yaml", openAPIHandler)
+	mux.HandleFunc("/api/docs", docsHandler)
+
 	if cfg.EnableAPI && cfg.Workspace != nil {
 		mux.Handle("/api/tree", treeHandler(cfg.Workspace))
 		mux.Handle("/api/file", fileHandler(cfg.Workspace))
