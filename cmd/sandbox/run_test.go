@@ -15,7 +15,7 @@ func TestRun_CancelledContextExitsCleanly(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		done <- Run(ctx, "127.0.0.1:0", "", dir, false, false)
+		done <- Run(ctx, "127.0.0.1:0", "", dir, false, false, false)
 	}()
 
 	// Give the server a beat to bind, then cancel.
@@ -31,7 +31,7 @@ func TestRun_CancelledContextExitsCleanly(t *testing.T) {
 }
 
 func TestRun_InvalidWorkspaceReturnsError(t *testing.T) {
-	err := Run(context.Background(), "127.0.0.1:0", "", "/nonexistent/codegen-sandbox-test-root", false, false)
+	err := Run(context.Background(), "127.0.0.1:0", "", "/nonexistent/codegen-sandbox-test-root", false, false, false)
 	require.Error(t, err)
 }
 
@@ -41,7 +41,7 @@ func TestRun_WithAPIListener_CancelledContextExitsCleanly(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		done <- Run(ctx, "127.0.0.1:0", "127.0.0.1:0", dir, true, true)
+		done <- Run(ctx, "127.0.0.1:0", "127.0.0.1:0", dir, true, true, false)
 	}()
 
 	time.Sleep(100 * time.Millisecond)
