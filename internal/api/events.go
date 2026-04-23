@@ -32,11 +32,7 @@ func eventsHandler(ws *workspace.Workspace) http.Handler {
 			http.Error(w, "streaming unsupported", http.StatusInternalServerError)
 			return
 		}
-		w.Header().Set("Content-Type", "text/event-stream")
-		w.Header().Set("Cache-Control", "no-cache")
-		w.Header().Set("Connection", "keep-alive")
-		w.WriteHeader(http.StatusOK)
-		flusher.Flush()
+		writeSSEHeaders(w, flusher)
 
 		watcher, err := fsnotify.NewWatcher()
 		if err != nil {
@@ -56,63 +52,80 @@ func eventsHandler(ws *workspace.Workspace) http.Handler {
 		ping := time.NewTicker(eventsKeepAlive)
 		defer ping.Stop()
 
-		for {
-			select {
-			case <-r.Context().Done():
-				return
-			case ev, ok := <-watcher.Events:
-				if !ok {
-					return
-				}
-				rel, err := filepath.Rel(ws.Root(), ev.Name)
-				if err != nil || strings.HasPrefix(rel, "..") {
-					continue
-				}
-				if skipPath(rel) {
-					continue
-				}
-
-				// If a new directory appeared, extend the watch.
-				if ev.Op&fsnotify.Create != 0 {
-					if info, err := os.Stat(ev.Name); err == nil && info.IsDir() {
-						_ = addWatchRecursive(watcher, ev.Name)
-					}
-				}
-
-				payload := fsEvent{
-					Type: classifyOp(ev.Op),
-					Path: filepath.ToSlash(rel),
-					TS:   time.Now().UTC().Format(time.RFC3339),
-				}
-				if payload.Type == "" {
-					continue
-				}
-				b, err := json.Marshal(payload)
-				if err != nil {
-					continue
-				}
-				if _, err := fmt.Fprintf(w, "data: %s\n\n", b); err != nil {
-					return
-				}
-				flusher.Flush()
-			case werr, ok := <-watcher.Errors:
-				// Keep the stream open even when the watcher reports an
-				// error (permissions, watch-limit exhaustion, ...). Log so
-				// operators can see degraded behaviour.
-				if !ok {
-					return
-				}
-				if werr != nil {
-					log.Printf("api events watcher error: %v", werr)
-				}
-			case <-ping.C:
-				if _, err := fmt.Fprint(w, ": ping\n\n"); err != nil {
-					return
-				}
-				flusher.Flush()
-			}
-		}
+		runEventsLoop(r, w, flusher, watcher, ws.Root(), ping.C)
 	})
+}
+
+func writeSSEHeaders(w http.ResponseWriter, flusher http.Flusher) {
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.WriteHeader(http.StatusOK)
+	flusher.Flush()
+}
+
+func runEventsLoop(r *http.Request, w http.ResponseWriter, flusher http.Flusher, watcher *fsnotify.Watcher, root string, pingC <-chan time.Time) {
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case ev, ok := <-watcher.Events:
+			if !ok {
+				return
+			}
+			if !handleFSEvent(w, flusher, watcher, root, ev) {
+				return
+			}
+		case werr, ok := <-watcher.Errors:
+			if !ok {
+				return
+			}
+			if werr != nil {
+				log.Printf("api events watcher error: %v", werr)
+			}
+		case <-pingC:
+			if _, err := fmt.Fprint(w, ": ping\n\n"); err != nil {
+				return
+			}
+			flusher.Flush()
+		}
+	}
+}
+
+// handleFSEvent writes one event (if non-skipped) to the SSE stream.
+// Returns false when the client stream is dead and the loop should exit.
+func handleFSEvent(w http.ResponseWriter, flusher http.Flusher, watcher *fsnotify.Watcher, root string, ev fsnotify.Event) bool {
+	rel, err := filepath.Rel(root, ev.Name)
+	if err != nil || strings.HasPrefix(rel, "..") {
+		return true
+	}
+	if skipPath(rel) {
+		return true
+	}
+
+	if ev.Op&fsnotify.Create != 0 {
+		if info, err := os.Stat(ev.Name); err == nil && info.IsDir() {
+			_ = addWatchRecursive(watcher, ev.Name)
+		}
+	}
+
+	payload := fsEvent{
+		Type: classifyOp(ev.Op),
+		Path: filepath.ToSlash(rel),
+		TS:   time.Now().UTC().Format(time.RFC3339),
+	}
+	if payload.Type == "" {
+		return true
+	}
+	b, err := json.Marshal(payload)
+	if err != nil {
+		return true
+	}
+	if _, err := fmt.Fprintf(w, "data: %s\n\n", b); err != nil {
+		return false
+	}
+	flusher.Flush()
+	return true
 }
 
 // classifyOp maps an fsnotify Op to the string used in the SSE payload.

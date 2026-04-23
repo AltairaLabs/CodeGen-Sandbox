@@ -56,40 +56,48 @@ func TestExecHandler_HappyPath_EchoAndExit(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = c.CloseNow() })
 
-	// Send stdin: "echo hello\n"
+	sendStdin(ctx, t, c, "echo hello\n")
+	require.True(t, waitForStdoutContains(ctx, t, c, "hello", 5*time.Second), "did not see 'hello' on stdout")
+
+	sendStdin(ctx, t, c, "exit\n")
+	require.True(t, waitForExitFrame(ctx, c, 5*time.Second), "did not receive exit frame")
+}
+
+// sendStdin writes a "stdin" frame containing the given shell text.
+func sendStdin(ctx context.Context, t *testing.T, c *websocket.Conn, text string) {
+	t.Helper()
 	writeFrame(ctx, t, c, map[string]any{
 		"type": "stdin",
-		"data": base64.StdEncoding.EncodeToString([]byte("echo hello\n")),
+		"data": base64.StdEncoding.EncodeToString([]byte(text)),
 	})
+}
 
-	// Read stdout frames until we see "hello".
-	sawHello := false
-	for deadline := time.Now().Add(5 * time.Second); !sawHello && time.Now().Before(deadline); {
+// waitForStdoutContains reads frames until a stdout frame containing substr
+// arrives or the deadline is reached.
+func waitForStdoutContains(ctx context.Context, t *testing.T, c *websocket.Conn, substr string, d time.Duration) bool {
+	t.Helper()
+	for deadline := time.Now().Add(d); time.Now().Before(deadline); {
 		msg := readFrame(ctx, t, c)
-		if msg["type"] == "stdout" {
-			raw, _ := msg["data"].(string)
-			dec, err := base64.StdEncoding.DecodeString(raw)
-			require.NoError(t, err)
-			if strings.Contains(string(dec), "hello") {
-				sawHello = true
-			}
+		if msg["type"] != "stdout" {
+			continue
+		}
+		raw, _ := msg["data"].(string)
+		dec, err := base64.StdEncoding.DecodeString(raw)
+		require.NoError(t, err)
+		if strings.Contains(string(dec), substr) {
+			return true
 		}
 	}
-	require.True(t, sawHello, "did not see 'hello' on stdout")
+	return false
+}
 
-	// Send exit.
-	writeFrame(ctx, t, c, map[string]any{
-		"type": "stdin",
-		"data": base64.StdEncoding.EncodeToString([]byte("exit\n")),
-	})
-
-	// Drain until we see the exit frame.
-	sawExit := false
-	for deadline := time.Now().Add(5 * time.Second); !sawExit && time.Now().Before(deadline); {
+// waitForExitFrame drains frames until an "exit" frame arrives or the server
+// closes the WS. Tolerates closure as end-of-session.
+func waitForExitFrame(ctx context.Context, c *websocket.Conn, d time.Duration) bool {
+	for deadline := time.Now().Add(d); time.Now().Before(deadline); {
 		typ, data, err := c.Read(ctx)
 		if err != nil {
-			// WS close after exit frame is expected.
-			break
+			return false
 		}
 		if typ != websocket.MessageText {
 			continue
@@ -99,10 +107,10 @@ func TestExecHandler_HappyPath_EchoAndExit(t *testing.T) {
 			continue
 		}
 		if msg["type"] == "exit" {
-			sawExit = true
+			return true
 		}
 	}
-	require.True(t, sawExit, "did not receive exit frame")
+	return false
 }
 
 func TestExecHandler_ResizeFrame_NoError(t *testing.T) {

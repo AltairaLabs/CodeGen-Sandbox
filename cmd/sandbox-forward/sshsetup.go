@@ -308,29 +308,43 @@ func replaceHostBlock(existing []byte, name, newBlock string) []byte {
 	lines := strings.Split(string(existing), "\n")
 	start, end := findHostBlock(lines, name)
 	if start < 0 {
-		// Append. Ensure separation with a blank line if the file doesn't end with one.
-		var out strings.Builder
-		out.Write(existing)
-		if !strings.HasSuffix(string(existing), "\n") {
-			out.WriteString("\n")
-		}
-		if !strings.HasSuffix(string(existing), "\n\n") && len(existing) > 0 {
-			out.WriteString("\n")
-		}
-		out.WriteString(newBlock)
-		return []byte(out.String())
+		return appendHostBlock(existing, newBlock)
 	}
+	return spliceHostBlock(lines, start, end, newBlock)
+}
+
+// appendHostBlock writes newBlock after existing with a blank-line separator.
+func appendHostBlock(existing []byte, newBlock string) []byte {
 	var out strings.Builder
-	for i := 0; i < start; i++ {
-		out.WriteString(lines[i])
-		if i < len(lines)-1 {
-			out.WriteString("\n")
-		}
+	out.Write(existing)
+	if !strings.HasSuffix(string(existing), "\n") {
+		out.WriteString("\n")
 	}
+	if !strings.HasSuffix(string(existing), "\n\n") && len(existing) > 0 {
+		out.WriteString("\n")
+	}
+	out.WriteString(newBlock)
+	return []byte(out.String())
+}
+
+// spliceHostBlock replaces lines[start:end] with newBlock.
+func spliceHostBlock(lines []string, start, end int, newBlock string) []byte {
+	var out strings.Builder
+	writeLines(&out, lines, 0, start)
 	// newBlock already ends with \n.
 	out.WriteString(newBlock)
-	for i := end; i < len(lines); i++ {
-		// Skip the trailing empty string that Split produces after a final "\n".
+	writeLines(&out, lines, end, len(lines))
+	s := out.String()
+	if !strings.HasSuffix(s, "\n") {
+		s += "\n"
+	}
+	return []byte(s)
+}
+
+// writeLines emits lines[from:to] separated by "\n", dropping the trailing
+// empty string that strings.Split produces after a final "\n".
+func writeLines(out *strings.Builder, lines []string, from, to int) {
+	for i := from; i < to; i++ {
 		if i == len(lines)-1 && lines[i] == "" {
 			continue
 		}
@@ -339,12 +353,6 @@ func replaceHostBlock(existing []byte, name, newBlock string) []byte {
 			out.WriteString("\n")
 		}
 	}
-	// Ensure final newline.
-	s := out.String()
-	if !strings.HasSuffix(s, "\n") {
-		s += "\n"
-	}
-	return []byte(s)
 }
 
 // findHostBlock returns the [start, end) line indices of the `Host <name>`

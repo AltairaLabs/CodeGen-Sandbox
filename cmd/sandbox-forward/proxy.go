@@ -227,55 +227,58 @@ func tunnelConn(ctx context.Context, wsTarget string, headers http.Header, in io
 
 	var wg sync.WaitGroup
 	wg.Add(2)
-
-	// in -> WS
 	go func() {
 		defer wg.Done()
-		buf := make([]byte, 32*1024)
-		for {
-			n, rerr := in.Read(buf)
-			if n > 0 {
-				if c.Write(tunnelCtx, websocket.MessageBinary, buf[:n]) != nil {
-					cancel()
-					return
-				}
-			}
-			if rerr != nil {
-				// Stdin EOF or conn closed: close the WS so the other side unblocks.
-				_ = c.Close(websocket.StatusNormalClosure, "")
-				cancel()
-				return
-			}
-		}
+		pumpInToWS(tunnelCtx, c, in, cancel)
 	}()
-
-	// WS -> out
 	go func() {
 		defer wg.Done()
-		for {
-			typ, data, rerr := c.Read(tunnelCtx)
-			if rerr != nil {
-				// Unblock the in-pump's Read: os.Stdin / net.Conn / io.Pipe
-				// all implement io.Closer and calling Close returns EOF from
-				// an in-flight Read. Without this, a remote-initiated close
-				// leaves the in-pump blocked until the user types something.
-				if closer, ok := in.(io.Closer); ok {
-					_ = closer.Close()
-				}
-				cancel()
-				return
-			}
-			if typ != websocket.MessageBinary {
-				continue
-			}
-			if _, werr := out.Write(data); werr != nil {
-				cancel()
-				return
-			}
-		}
+		pumpWSToOut(tunnelCtx, c, in, out, cancel)
 	}()
 
 	wg.Wait()
 	_ = c.CloseNow()
 	return nil
+}
+
+func pumpInToWS(ctx context.Context, c *websocket.Conn, in io.Reader, cancel context.CancelFunc) {
+	buf := make([]byte, 32*1024)
+	for {
+		n, rerr := in.Read(buf)
+		if n > 0 {
+			if c.Write(ctx, websocket.MessageBinary, buf[:n]) != nil {
+				cancel()
+				return
+			}
+		}
+		if rerr != nil {
+			// Stdin EOF or conn closed: close the WS so the other side unblocks.
+			_ = c.Close(websocket.StatusNormalClosure, "")
+			cancel()
+			return
+		}
+	}
+}
+
+// pumpWSToOut forwards WS payloads to out. On remote close it also closes
+// `in` (if it implements io.Closer) so the sibling pump's blocking Read
+// unblocks — os.Stdin / net.Conn / io.Pipe all satisfy this.
+func pumpWSToOut(ctx context.Context, c *websocket.Conn, in io.Reader, out io.Writer, cancel context.CancelFunc) {
+	for {
+		typ, data, rerr := c.Read(ctx)
+		if rerr != nil {
+			if closer, ok := in.(io.Closer); ok {
+				_ = closer.Close()
+			}
+			cancel()
+			return
+		}
+		if typ != websocket.MessageBinary {
+			continue
+		}
+		if _, werr := out.Write(data); werr != nil {
+			cancel()
+			return
+		}
+	}
 }

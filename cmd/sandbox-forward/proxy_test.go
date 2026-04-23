@@ -56,75 +56,85 @@ func newFakeServer(sshPort int) *fakePortForwardServer {
 
 func (f *fakePortForwardServer) handler() http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/api/port-forward", func(w http.ResponseWriter, r *http.Request) {
-		f.mu.Lock()
-		f.capturedHdrs = r.Header.Clone()
-		f.mu.Unlock()
-
-		portStr := r.URL.Query().Get("port")
-		port, err := strconv.Atoi(portStr)
-		if err != nil {
-			http.Error(w, "bad port", http.StatusBadRequest)
-			return
-		}
-		c, err := websocket.Accept(w, r, nil)
-		if err != nil {
-			return
-		}
-		defer func() { _ = c.CloseNow() }()
-
-		tcp, err := net.Dial("tcp", "127.0.0.1:"+strconv.Itoa(port))
-		if err != nil {
-			_ = c.Close(websocket.StatusInternalError, "dial failed")
-			return
-		}
-		defer func() { _ = tcp.Close() }()
-
-		ctx := r.Context()
-		var wg sync.WaitGroup
-		wg.Add(2)
-		go func() {
-			defer wg.Done()
-			for {
-				typ, data, err := c.Read(ctx)
-				if err != nil {
-					_ = tcp.Close()
-					return
-				}
-				if typ != websocket.MessageBinary {
-					continue
-				}
-				if _, err := tcp.Write(data); err != nil {
-					return
-				}
-			}
-		}()
-		go func() {
-			defer wg.Done()
-			buf := make([]byte, 32*1024)
-			for {
-				n, err := tcp.Read(buf)
-				if n > 0 {
-					if c.Write(ctx, websocket.MessageBinary, buf[:n]) != nil {
-						return
-					}
-				}
-				if err != nil {
-					_ = c.Close(websocket.StatusNormalClosure, "")
-					return
-				}
-			}
-		}()
-		wg.Wait()
-	})
-	mux.HandleFunc("/api/ssh-port", func(w http.ResponseWriter, r *http.Request) {
-		f.mu.Lock()
-		f.capturedSSHHdr = r.Header.Clone()
-		f.mu.Unlock()
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]int{"port": f.sshPort})
-	})
+	mux.HandleFunc("/api/port-forward", f.handlePortForward)
+	mux.HandleFunc("/api/ssh-port", f.handleSSHPort)
 	return mux
+}
+
+func (f *fakePortForwardServer) handlePortForward(w http.ResponseWriter, r *http.Request) {
+	f.mu.Lock()
+	f.capturedHdrs = r.Header.Clone()
+	f.mu.Unlock()
+
+	port, err := strconv.Atoi(r.URL.Query().Get("port"))
+	if err != nil {
+		http.Error(w, "bad port", http.StatusBadRequest)
+		return
+	}
+	c, err := websocket.Accept(w, r, nil)
+	if err != nil {
+		return
+	}
+	defer func() { _ = c.CloseNow() }()
+
+	tcp, err := net.Dial("tcp", "127.0.0.1:"+strconv.Itoa(port))
+	if err != nil {
+		_ = c.Close(websocket.StatusInternalError, "dial failed")
+		return
+	}
+	defer func() { _ = tcp.Close() }()
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		fakePumpWSToTCP(r.Context(), c, tcp)
+	}()
+	go func() {
+		defer wg.Done()
+		fakePumpTCPToWS(r.Context(), c, tcp)
+	}()
+	wg.Wait()
+}
+
+func (f *fakePortForwardServer) handleSSHPort(w http.ResponseWriter, r *http.Request) {
+	f.mu.Lock()
+	f.capturedSSHHdr = r.Header.Clone()
+	f.mu.Unlock()
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]int{"port": f.sshPort})
+}
+
+func fakePumpWSToTCP(ctx context.Context, c *websocket.Conn, tcp net.Conn) {
+	for {
+		typ, data, err := c.Read(ctx)
+		if err != nil {
+			_ = tcp.Close()
+			return
+		}
+		if typ != websocket.MessageBinary {
+			continue
+		}
+		if _, err := tcp.Write(data); err != nil {
+			return
+		}
+	}
+}
+
+func fakePumpTCPToWS(ctx context.Context, c *websocket.Conn, tcp net.Conn) {
+	buf := make([]byte, 32*1024)
+	for {
+		n, err := tcp.Read(buf)
+		if n > 0 {
+			if c.Write(ctx, websocket.MessageBinary, buf[:n]) != nil {
+				return
+			}
+		}
+		if err != nil {
+			_ = c.Close(websocket.StatusNormalClosure, "")
+			return
+		}
+	}
 }
 
 func TestBuildPortForwardURL(t *testing.T) {

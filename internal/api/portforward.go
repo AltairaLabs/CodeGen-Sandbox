@@ -96,58 +96,60 @@ func runPortForward(ctx context.Context, c *websocket.Conn, tcp net.Conn) (int64
 	var wg sync.WaitGroup
 	wg.Add(2)
 
-	// WS -> TCP: read binary frames from the WS, write to TCP.
 	go func() {
 		defer wg.Done()
-		for {
-			typ, data, err := c.Read(ctx)
-			if err != nil {
-				// Closing the TCP side unblocks the other pump.
-				_ = tcp.Close()
-				return
-			}
-			if typ != websocket.MessageBinary {
-				// Ignore non-binary frames (e.g. stray text).
-				continue
-			}
-			n, werr := tcp.Write(data)
-			if n > 0 {
-				bytesIn.Add(int64(n))
-			}
-			if werr != nil {
-				_ = tcp.Close()
-				return
-			}
-		}
+		pumpWSToTCP(ctx, c, tcp, &bytesIn)
 	}()
-
-	// TCP -> WS: read from TCP, write binary frames to WS.
 	go func() {
 		defer wg.Done()
-		buf := make([]byte, portForwardBufSize)
-		for {
-			n, err := tcp.Read(buf)
-			if n > 0 {
-				if c.Write(ctx, websocket.MessageBinary, buf[:n]) != nil {
-					_ = tcp.Close()
-					return
-				}
-				bytesOut.Add(int64(n))
-			}
-			if err != nil {
-				if !errors.Is(err, io.EOF) && !errors.Is(err, net.ErrClosed) {
-					// Log non-EOF reads for diagnostics; still fall through
-					// to close the WS so the client learns the session ended.
-					log.Printf("api port-forward tcp read: %v", err)
-				}
-				_ = c.Close(websocket.StatusNormalClosure, "")
-				return
-			}
-		}
+		pumpTCPToWS(ctx, c, tcp, &bytesOut)
 	}()
 
 	wg.Wait()
 	// Belt-and-braces: make sure both sides are closed on return.
 	_ = tcp.Close()
 	return bytesIn.Load(), bytesOut.Load()
+}
+
+func pumpWSToTCP(ctx context.Context, c *websocket.Conn, tcp net.Conn, bytesIn *atomic.Int64) {
+	for {
+		typ, data, err := c.Read(ctx)
+		if err != nil {
+			// Closing the TCP side unblocks the other pump.
+			_ = tcp.Close()
+			return
+		}
+		if typ != websocket.MessageBinary {
+			continue
+		}
+		n, werr := tcp.Write(data)
+		if n > 0 {
+			bytesIn.Add(int64(n))
+		}
+		if werr != nil {
+			_ = tcp.Close()
+			return
+		}
+	}
+}
+
+func pumpTCPToWS(ctx context.Context, c *websocket.Conn, tcp net.Conn, bytesOut *atomic.Int64) {
+	buf := make([]byte, portForwardBufSize)
+	for {
+		n, err := tcp.Read(buf)
+		if n > 0 {
+			if c.Write(ctx, websocket.MessageBinary, buf[:n]) != nil {
+				_ = tcp.Close()
+				return
+			}
+			bytesOut.Add(int64(n))
+		}
+		if err != nil {
+			if !errors.Is(err, io.EOF) && !errors.Is(err, net.ErrClosed) {
+				log.Printf("api port-forward tcp read: %v", err)
+			}
+			_ = c.Close(websocket.StatusNormalClosure, "")
+			return
+		}
+	}
 }
