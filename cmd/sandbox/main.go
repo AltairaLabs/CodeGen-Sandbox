@@ -15,6 +15,7 @@ func main() {
 	apiAddr := flag.String("api-addr", "", "HTTP listen address for the human-facing API (empty = disabled)")
 	enableAPI := flag.Bool("enable-api", false, "mount /api/tree, /api/file, /api/events on -api-addr")
 	enableExec := flag.Bool("enable-exec", false, "mount /api/exec (WebSocket PTY) on -api-addr")
+	enablePortForward := flag.Bool("enable-port-forward", false, "mount /api/port-forward (WebSocket TCP tunnel to loopback) on -api-addr")
 	root := flag.String("workspace", "/workspace", "workspace root (absolute path)")
 	devMode := flag.Bool("dev-mode", false, "trust-no-headers dev fallback: inject a placeholder identity when forwarded headers are absent")
 	flag.Parse()
@@ -23,7 +24,7 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	if err := Run(ctx, *addr, *apiAddr, *root, *devMode, *enableAPI, *enableExec); err != nil {
+	if err := Run(ctx, *addr, *apiAddr, *root, *devMode, *enableAPI, *enableExec, *enablePortForward); err != nil {
 		log.Fatal(err)
 	}
 }

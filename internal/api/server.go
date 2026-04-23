@@ -10,10 +10,11 @@ import (
 // add fields for port-forward/ssh toggles and a shell registry; for now only
 // the read-only surface plus optional exec is exposed.
 type Config struct {
-	Workspace  *workspace.Workspace
-	DevMode    bool
-	EnableAPI  bool // tree/file/events
-	EnableExec bool // /api/exec (WebSocket PTY)
+	Workspace         *workspace.Workspace
+	DevMode           bool
+	EnableAPI         bool // tree/file/events
+	EnableExec        bool // /api/exec (WebSocket PTY)
+	EnablePortForward bool // /api/port-forward (WebSocket TCP tunnel to 127.0.0.1:<port>)
 }
 
 // New returns an http.Handler mounting the API routes at /api/*. All routes
@@ -28,6 +29,9 @@ func New(cfg Config) http.Handler {
 	}
 	if cfg.EnableExec && cfg.Workspace != nil {
 		mux.Handle("/api/exec", execHandler(cfg.Workspace))
+	}
+	if cfg.EnablePortForward {
+		mux.Handle("/api/port-forward", portForwardHandler())
 	}
 	return WithIdentity(cfg.DevMode, mux)
 }
