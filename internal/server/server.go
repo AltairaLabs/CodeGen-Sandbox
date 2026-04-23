@@ -36,13 +36,19 @@ func New(ws *workspace.Workspace) (*Server, error) {
 	// is the single place where middleware is applied — adding another
 	// output-layer check later (logging, metrics) would slot in here.
 	reg := &scrubbingRegistrar{inner: s.mcp}
-	deps := &tools.Deps{Workspace: s.ws, Tracker: s.tracker}
+	deps := &tools.Deps{
+		Workspace: s.ws,
+		Tracker:   s.tracker,
+		Shells:    tools.NewShellRegistry(),
+	}
 	tools.RegisterRead(reg, deps)
 	tools.RegisterWrite(reg, deps)
 	tools.RegisterEdit(reg, deps)
 	tools.RegisterGlob(reg, deps)
 	tools.RegisterGrep(reg, deps)
 	tools.RegisterBash(reg, deps)
+	tools.RegisterBashOutput(reg, deps)
+	tools.RegisterKillShell(reg, deps)
 	tools.RegisterRunTests(reg, deps)
 	tools.RegisterRunLint(reg, deps)
 	tools.RegisterRunTypecheck(reg, deps)
