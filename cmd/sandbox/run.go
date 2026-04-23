@@ -22,8 +22,11 @@ const (
 // agent-visible workspace. It listens for ctx cancellation and drains
 // inflight HTTP requests within a bounded grace window before returning.
 // Returns nil on clean shutdown; non-nil on startup failure or a shutdown
-// that exceeds the grace window.
-func Run(ctx context.Context, addr, workspaceRoot string) error {
+// that exceeds the grace window. devMode is currently just stored for
+// future use by the HTTP API handler (Task 2).
+func Run(ctx context.Context, addr, workspaceRoot string, devMode bool) error {
+	_ = devMode
+
 	ws, err := workspace.New(workspaceRoot)
 	if err != nil {
 		return fmt.Errorf("workspace: %w", err)
