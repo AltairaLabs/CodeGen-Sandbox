@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -26,9 +27,14 @@ const snapshotRefPrefix = "refs/sandbox/snapshots/"
 // leading-hyphen CLI-flag confusion; remaining chars may also include '.' and '-'.
 var snapshotNamePattern = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9_.-]*$`)
 
-// TODO: follow-up — add `sandbox_snapshot_ttl` flag-driven cleanup so
-// long-running pods don't accumulate refs indefinitely. For now snapshots
-// live for the pod's lifetime, which is the container teardown in prod.
+const (
+	// errSnapshotNotFound is the canonical error-message format for "no
+	// snapshot by that name" across the three tools that check it.
+	errSnapshotNotFound = "snapshot %q not found"
+	// gitIndexEnvKey is the env-var prefix for GIT_INDEX_FILE; extracted
+	// to avoid the literal being duplicated (go:S1192).
+	gitIndexEnvKey = "GIT_INDEX_FILE="
+)
 
 // RegisterSnapshots registers the four snapshot tools.
 func RegisterSnapshots(s ToolAdder, deps *Deps) {
@@ -128,10 +134,10 @@ func HandleSnapshotRestore(deps *Deps) func(context.Context, mcp.CallToolRequest
 
 		root := deps.Workspace.Root()
 		if !gitRepoExists(root) {
-			return ErrorResult("snapshot %q not found", name), nil
+			return ErrorResult(errSnapshotNotFound, name), nil
 		}
 		if !snapshotExists(ctx, root, name) {
-			return ErrorResult("snapshot %q not found", name), nil
+			return ErrorResult(errSnapshotNotFound, name), nil
 		}
 
 		changed, errRes := restoreSnapshot(ctx, root, name)
@@ -154,10 +160,10 @@ func HandleSnapshotDiff(deps *Deps) func(context.Context, mcp.CallToolRequest) (
 
 		root := deps.Workspace.Root()
 		if !gitRepoExists(root) {
-			return ErrorResult("snapshot %q not found", name), nil
+			return ErrorResult(errSnapshotNotFound, name), nil
 		}
 		if !snapshotExists(ctx, root, name) {
-			return ErrorResult("snapshot %q not found", name), nil
+			return ErrorResult(errSnapshotNotFound, name), nil
 		}
 
 		diff, errRes := diffSnapshot(ctx, root, name)
@@ -223,7 +229,7 @@ func tempIndexPath(root string) string {
 func createSnapshot(ctx context.Context, root, name, description string) (string, *mcp.CallToolResult) {
 	idx := tempIndexPath(root)
 	defer func() { _ = os.Remove(idx) }()
-	env := []string{"GIT_INDEX_FILE=" + idx}
+	env := []string{gitIndexEnvKey + idx}
 
 	if _, err := runGit(ctx, root, env, "add", "--all"); err != nil {
 		return "", ErrorResult("snapshot add: %v", err)
@@ -325,7 +331,7 @@ func restoreSnapshot(ctx context.Context, root, name string) ([]string, *mcp.Cal
 
 	idx := tempIndexPath(root)
 	defer func() { _ = os.Remove(idx) }()
-	env := []string{"GIT_INDEX_FILE=" + idx}
+	env := []string{gitIndexEnvKey + idx}
 
 	if _, err := runGit(ctx, root, env, "read-tree", snapshotRef(name)); err != nil {
 		return nil, ErrorResult("read-tree: %v", err)
@@ -444,7 +450,7 @@ func formatRestoreResult(name string, changed []string) string {
 func diffSnapshot(ctx context.Context, root, name string) (string, *mcp.CallToolResult) {
 	idx := tempIndexPath(root)
 	defer func() { _ = os.Remove(idx) }()
-	env := []string{"GIT_INDEX_FILE=" + idx}
+	env := []string{gitIndexEnvKey + idx}
 
 	if _, err := runGit(ctx, root, env, "add", "--all"); err != nil {
 		return "", ErrorResult("diff add: %v", err)
@@ -465,11 +471,33 @@ func diffSnapshot(ctx context.Context, root, name string) (string, *mcp.CallTool
 	return string(out), nil
 }
 
+// gitPathCache caches exec.LookPath("git") across runGit calls. Resolving
+// git to an absolute path (not relying on $PATH resolution per exec.Cmd
+// invocation) closes the "PATH may contain a writable directory" hotspot
+// gosecurity:S4036, the same way internal/tools/bash.go pins /bin/bash.
+var (
+	gitPathOnce sync.Once
+	gitPathVal  string
+)
+
+func resolvedGitPath() string {
+	gitPathOnce.Do(func() {
+		if p, err := exec.LookPath("git"); err == nil {
+			gitPathVal = p
+			return
+		}
+		// Fall back to the literal: the subsequent exec will surface a
+		// clear "git: executable file not found" error at the first call.
+		gitPathVal = "git"
+	})
+	return gitPathVal
+}
+
 // runGit invokes git with the given args in root. Extra environment pairs
 // (e.g. GIT_INDEX_FILE) are appended to os.Environ. Returns combined
 // stdout+stderr on non-zero exit.
 func runGit(ctx context.Context, root string, extraEnv []string, args ...string) ([]byte, error) {
-	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd := exec.CommandContext(ctx, resolvedGitPath(), args...)
 	cmd.Dir = root
 	if len(extraEnv) > 0 {
 		cmd.Env = append(os.Environ(), extraEnv...)

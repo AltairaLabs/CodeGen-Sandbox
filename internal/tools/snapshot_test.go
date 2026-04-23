@@ -10,6 +10,7 @@ import (
 
 	"github.com/altairalabs/codegen-sandbox/internal/tools"
 	"github.com/mark3labs/mcp-go/mcp"
+	mcpserver "github.com/mark3labs/mcp-go/server"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -292,4 +293,69 @@ func TestSnapshot_FullRoundTrip(t *testing.T) {
 
 	data, _ := os.ReadFile(path)
 	assert.Equal(t, "v1\n", string(data))
+}
+
+// captureRegistrar implements tools.ToolAdder and records the names of
+// every tool handed to AddTool. Used to verify RegisterSnapshots wires up
+// all four snapshot tools on a single call.
+type captureRegistrar struct {
+	names []string
+}
+
+func (c *captureRegistrar) AddTool(tool mcp.Tool, _ mcpserver.ToolHandlerFunc) {
+	c.names = append(c.names, tool.Name)
+}
+
+func TestRegisterSnapshots_RegistersAllFour(t *testing.T) {
+	deps, _ := newTestDeps(t)
+	reg := &captureRegistrar{}
+	tools.RegisterSnapshots(reg, deps)
+	assert.ElementsMatch(t, []string{
+		"snapshot_create",
+		"snapshot_list",
+		"snapshot_restore",
+		"snapshot_diff",
+	}, reg.names)
+}
+
+func TestSnapshotDiff_NoDifferencesReturnsClearMessage(t *testing.T) {
+	deps, root := newTestDeps(t)
+	setupUserGitRepo(t, root)
+
+	require.NoError(t, os.WriteFile(filepath.Join(root, "stable.txt"), []byte("hello"), 0o644))
+	create := callSnapshotCreate(t, deps, map[string]any{"name": "same"})
+	require.False(t, create.IsError)
+
+	diff := callSnapshotDiff(t, deps, map[string]any{"name": "same"})
+	require.False(t, diff.IsError)
+	assert.Contains(t, strings.ToLower(textOf(t, diff)), "no differences")
+}
+
+func TestSnapshotRestore_FileOutsideSnapshotIsRemoved(t *testing.T) {
+	deps, root := newTestDeps(t)
+	setupUserGitRepo(t, root)
+
+	require.NoError(t, os.WriteFile(filepath.Join(root, "keep.txt"), []byte("original"), 0o644))
+	require.False(t, callSnapshotCreate(t, deps, map[string]any{"name": "base"}).IsError)
+
+	// Add a new file after the snapshot.
+	stray := filepath.Join(root, "stray.txt")
+	require.NoError(t, os.WriteFile(stray, []byte("new"), 0o644))
+	_, err := os.Stat(stray)
+	require.NoError(t, err)
+
+	// Restoring should remove stray.txt since it wasn't in the snapshot.
+	require.False(t, callSnapshotRestore(t, deps, map[string]any{"name": "base"}).IsError)
+	_, err = os.Stat(stray)
+	assert.True(t, os.IsNotExist(err), "stray file should be removed by restore")
+}
+
+func TestSnapshotCreate_InvalidNameRejected(t *testing.T) {
+	deps, _ := newTestDeps(t)
+	for _, bad := range []string{"", ".hidden", "-flag", "has/slash", "has space", "has\ttab"} {
+		t.Run(bad, func(t *testing.T) {
+			res := callSnapshotCreate(t, deps, map[string]any{"name": bad})
+			assert.Truef(t, res.IsError, "name %q should be rejected", bad)
+		})
+	}
 }
