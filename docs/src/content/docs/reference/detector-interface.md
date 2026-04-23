@@ -79,11 +79,21 @@ This is how the [tools-layer Docker pattern](/operations/docker/) works: the san
 
 ## Lint-output parsing
 
-`verify.ParseLint` is currently tuned to **golangci-lint v2's output format**: `<file>:<line>:<col>: <msg> (<rule>)`. Non-Go linters (ruff, eslint, clippy) have different formats and won't produce structured findings from `run_lint` in v1 — the raw output still comes back via the error path (`(lint incomplete: ...)`), but the agent won't get structured `file:line:col:rule: message` records.
+Each detector implements `ParseLint(stdout, stderr string) []LintFinding` to convert its linter's raw output into structured records. Two strings are passed because linters differ in which stream they use:
 
-A follow-up plan will either:
+| Detector | Linter | Emits findings on | Rule capture |
+|---|---|---|---|
+| Go | golangci-lint v2 | stdout | rule name, e.g. `errcheck` |
+| Python | ruff | stdout | rule code, e.g. `F401` |
+| Node | eslint (--format=compact) | stdout | rule name, e.g. `semi` / `no-unused-vars` |
+| Rust | cargo clippy (--message-format=short) | stderr | severity (`warning` or `error`) — clippy's short format drops the rule name |
 
-1. Generalise `ParseLint` to a loose universal regex that matches the common `<file>:<line>:<col>: <message>` shape across linters, losing the `<rule>` tag for non-Go.
-2. Add a `ParseLint(stdout string) []LintFinding` method to the `Detector` interface so each detector parses its own linter's output.
+Unrecognised lines (context, summary blocks, cargo's "Checking..." banner) are silently skipped. Each parser is unit-tested against sample output in `parser_test.go`.
 
-Option 2 is cleaner; option 1 is a one-commit expedient.
+## Adding a detector
+
+1. Create `internal/verify/<language>.go` with a struct implementing the five `Detector` methods.
+2. Extend `Detect` in `internal/verify/verify.go` to check for the marker file (specific markers first).
+3. Write the `ParseLint` implementation. If the linter's output resembles `<file>:<line>:<col>: <msg> (<rule>)` or similar, reuse `parseLintRegex` with a tailored regex. Otherwise write a custom parser.
+4. Update the Dockerfile / example image to install the runtime.
+5. Add unit tests: marker detection (cheap), parser regex against sample output (cheap), and optionally a live integration test behind a `requireXxx(t)` skip helper (like `requireGolangciLint`) for CI environments that have the tool installed.

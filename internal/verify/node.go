@@ -1,5 +1,7 @@
 package verify
 
+import "regexp"
+
 // nodeDetector implements Detector for Node projects identified by a
 // package.json at the workspace root.
 //
@@ -26,4 +28,19 @@ func (*nodeDetector) LintCmd() []string {
 // only, not typecheck.
 func (*nodeDetector) TypecheckCmd() []string {
 	return []string{"npx", "--no-install", "tsc", "--noEmit"}
+}
+
+// eslintLineRe matches eslint's --format=compact output on stdout:
+//
+//	/path/to/file.js: line 5, col 3, Error - Missing semicolon (semi)
+//
+// Level is Error|Warning. The message may contain any chars; the rule is
+// the final parenthesised token on the line (same approach as golangci-lint).
+var eslintLineRe = regexp.MustCompile(
+	`^(?P<file>[^:]+):\s+line\s+(?P<line>\d+),\s+col\s+(?P<col>\d+),\s+\w+\s+-\s+(?P<msg>.+?)\s+\((?P<rule>[A-Za-z][A-Za-z0-9_\-\/]*)\)\s*$`,
+)
+
+// ParseLint parses eslint's --format=compact output on stdout.
+func (*nodeDetector) ParseLint(stdout, _ string) []LintFinding {
+	return parseLintRegex(stdout, eslintLineRe)
 }

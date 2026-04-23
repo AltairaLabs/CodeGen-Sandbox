@@ -98,9 +98,10 @@ func Lint(ctx context.Context, root string, timeoutSec int) ([]LintFinding, erro
 
 	runErr := c.Run()
 
-	// Parse whatever we got regardless of exit code — golangci-lint emits
-	// findings on stdout, and exits 1 when findings exist.
-	findings := ParseLint(stdout.String())
+	// Parse whatever we got regardless of exit code — most linters emit
+	// findings on stdout (golangci-lint, ruff, eslint) while some emit on
+	// stderr (clippy). Each Detector.ParseLint picks the right stream.
+	findings := det.ParseLint(stdout.String(), stderr.String())
 
 	if errors.Is(execCtx.Err(), context.DeadlineExceeded) {
 		return findings, fmt.Errorf("lint: timed out after %ds", timeoutSec)
@@ -110,8 +111,8 @@ func Lint(ctx context.Context, root string, timeoutSec int) ([]LintFinding, erro
 		if !errors.As(runErr, &exitErr) {
 			return findings, fmt.Errorf("lint: %w", runErr)
 		}
-		// Exit 1 for golangci-lint == "findings exist". That's expected.
-		// Exit ≥ 2 is a genuine linter failure.
+		// Exit 1 == "findings exist" (golangci-lint, ruff, eslint default).
+		// Exit >= 2 is a genuine linter failure (bad config, crashed, etc.).
 		if exitErr.ExitCode() >= 2 {
 			return findings, fmt.Errorf("lint: %w (stderr: %s)", runErr, stderr.String())
 		}
