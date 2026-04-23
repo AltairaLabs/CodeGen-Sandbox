@@ -1,6 +1,9 @@
 # codegen-sandbox
 
 [![CI](https://github.com/AltairaLabs/CodeGen-Sandbox/actions/workflows/ci.yml/badge.svg)](https://github.com/AltairaLabs/CodeGen-Sandbox/actions/workflows/ci.yml)
+[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=AltairaLabs_CodeGen-Sandbox&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=AltairaLabs_CodeGen-Sandbox)
+[![Coverage](https://sonarcloud.io/api/project_badges/measure?project=AltairaLabs_CodeGen-Sandbox&metric=coverage)](https://sonarcloud.io/summary/new_code?id=AltairaLabs_CodeGen-Sandbox)
+[![Maintainability](https://sonarcloud.io/api/project_badges/measure?project=AltairaLabs_CodeGen-Sandbox&metric=sqale_rating)](https://sonarcloud.io/summary/new_code?id=AltairaLabs_CodeGen-Sandbox)
 
 Docker-based MCP server providing safe codegen tools for PromptKit agents. The brain (PromptKit) and hands (this sandbox) are separated by an MCP wire.
 
