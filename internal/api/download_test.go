@@ -3,6 +3,8 @@ package api
 import (
 	"archive/zip"
 	"bytes"
+	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -115,4 +117,55 @@ func TestDownloadFilenameFromHeader(t *testing.T) {
 		downloadFilenameFromHeader(`attachment; filename="workspace-20260423-173045.zip"`))
 	assert.Equal(t, "", downloadFilenameFromHeader("attachment"))
 	assert.Equal(t, "", downloadFilenameFromHeader(`attachment; filename=unquoted`))
+}
+
+func TestDownloadHandler_SkipsSymlinks(t *testing.T) {
+	dir := t.TempDir()
+	mustFile(t, dir, "target.txt", "real file")
+	// Create a symlink to the regular file. zipRegularFile should skip it.
+	require.NoError(t, os.Symlink(filepath.Join(dir, "target.txt"), filepath.Join(dir, "alias.txt")))
+
+	ws, err := workspace.New(dir)
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/download", nil)
+	rr := httptest.NewRecorder()
+	downloadHandler(ws).ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusOK, rr.Code)
+	zr, err := zip.NewReader(bytes.NewReader(rr.Body.Bytes()), int64(rr.Body.Len()))
+	require.NoError(t, err)
+
+	names := make(map[string]bool)
+	for _, f := range zr.File {
+		names[f.Name] = true
+	}
+	assert.True(t, names["target.txt"], "regular file should be present")
+	assert.False(t, names["alias.txt"], "symlink should be skipped")
+}
+
+func TestDownloadHandler_ContextCancellationStopsWalk(t *testing.T) {
+	dir := t.TempDir()
+	// Seed enough files that cancellation lands mid-walk on most systems.
+	for i := range 200 {
+		mustFile(t, dir, filepath.Join("bulk", fmt.Sprintf("file-%03d.txt", i)), "payload")
+	}
+
+	ws, err := workspace.New(dir)
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // pre-cancel: walk should short-circuit on the first non-root entry
+
+	req := httptest.NewRequest(http.MethodGet, "/api/download", nil).WithContext(ctx)
+	rr := httptest.NewRecorder()
+	downloadHandler(ws).ServeHTTP(rr, req)
+
+	// Status header was written before walk started, so we still see 200.
+	require.Equal(t, http.StatusOK, rr.Code)
+	// Body is a best-effort partial zip — verify it's at most a handful of
+	// entries, not the full 200.
+	zr, err := zip.NewReader(bytes.NewReader(rr.Body.Bytes()), int64(rr.Body.Len()))
+	require.NoError(t, err)
+	assert.Less(t, len(zr.File), 200, "walk should have been cut short by ctx cancel, got %d entries", len(zr.File))
 }

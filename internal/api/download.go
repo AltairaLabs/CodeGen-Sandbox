@@ -72,6 +72,12 @@ func downloadHandler(ws *workspace.Workspace) http.Handler {
 				_, err := zw.Create(filepath.ToSlash(rel) + "/")
 				return err
 			}
+			// Use the DirEntry's type so symlinks / sockets / devices are
+			// skipped without following them — os.Stat would follow the
+			// link and re-zip the target under the link's name.
+			if !d.Type().IsRegular() {
+				return nil
+			}
 			return zipRegularFile(zw, path, filepath.ToSlash(rel))
 		})
 		if walkErr != nil {
@@ -82,15 +88,14 @@ func downloadHandler(ws *workspace.Workspace) http.Handler {
 	})
 }
 
-// zipRegularFile copies one file into the zip stream. Symlinks and other
-// non-regular entries are skipped silently.
+// zipRegularFile copies one file into the zip stream. Caller is
+// responsible for ensuring the entry is a regular file (non-regular
+// entries should be filtered by the caller against the WalkDir DirEntry's
+// type; os.Stat would follow symlinks which is wrong here).
 func zipRegularFile(zw *zip.Writer, abs, rel string) error {
 	info, err := os.Stat(abs)
 	if err != nil {
 		return err
-	}
-	if !info.Mode().IsRegular() {
-		return nil
 	}
 	header, err := zip.FileInfoHeader(info)
 	if err != nil {
