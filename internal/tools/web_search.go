@@ -24,10 +24,15 @@ func RegisterWebSearch(s ToolAdder, deps *Deps) {
 	s.AddTool(tool, HandleWebSearch(deps))
 }
 
-// HandleWebSearch returns the WebSearch handler. The backend is selected at
-// call time from CODEGEN_SANDBOX_SEARCH_BACKEND so tests can flip it via
-// t.Setenv without restarting the server.
-func HandleWebSearch(_ *Deps) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+// HandleWebSearch returns the WebSearch handler backed by search.NewFromEnv.
+// Prefer this entry point in production.
+func HandleWebSearch(deps *Deps) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return handleWebSearchWith(deps, search.NewFromEnv)
+}
+
+// handleWebSearchWith is HandleWebSearch with the backend-factory injected
+// so tests can swap it for a fake without relying on real API keys.
+func handleWebSearchWith(_ *Deps, factory func() (search.Backend, error)) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		args, _ := req.Params.Arguments.(map[string]any)
 		query, _ := args["query"].(string)
@@ -35,7 +40,7 @@ func HandleWebSearch(_ *Deps) func(context.Context, mcp.CallToolRequest) (*mcp.C
 			return ErrorResult("query is required"), nil
 		}
 
-		backend, err := search.NewFromEnv()
+		backend, err := factory()
 		if err != nil {
 			return ErrorResult("WebSearch misconfigured: %v", err), nil
 		}

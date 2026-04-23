@@ -37,6 +37,19 @@ const (
 	defaultLimit = 10
 )
 
+// backendSpec describes how to instantiate a concrete Backend from its
+// API-key env var.
+type backendSpec struct {
+	apiKeyEnv string
+	build     func(apiKey string) Backend
+}
+
+var backendSpecs = map[string]backendSpec{
+	"brave":  {braveAPIKeyEnv, NewBrave},
+	"exa":    {exaAPIKeyEnv, NewExa},
+	"tavily": {tavilyAPIKeyEnv, NewTavily},
+}
+
 // NewFromEnv selects a backend based on CODEGEN_SANDBOX_SEARCH_BACKEND.
 // Returns (nil, nil) when the env var is unset — the caller distinguishes
 // "not configured" from real errors. Returns a non-nil error when a backend
@@ -47,28 +60,15 @@ func NewFromEnv() (Backend, error) {
 	if name == "" {
 		return nil, nil
 	}
-	switch name {
-	case "brave":
-		key := os.Getenv(braveAPIKeyEnv)
-		if key == "" {
-			return nil, fmt.Errorf("backend %q selected but %s is not set", name, braveAPIKeyEnv)
-		}
-		return NewBrave(key), nil
-	case "exa":
-		key := os.Getenv(exaAPIKeyEnv)
-		if key == "" {
-			return nil, fmt.Errorf("backend %q selected but %s is not set", name, exaAPIKeyEnv)
-		}
-		return NewExa(key), nil
-	case "tavily":
-		key := os.Getenv(tavilyAPIKeyEnv)
-		if key == "" {
-			return nil, fmt.Errorf("backend %q selected but %s is not set", name, tavilyAPIKeyEnv)
-		}
-		return NewTavily(key), nil
-	default:
+	spec, ok := backendSpecs[name]
+	if !ok {
 		return nil, fmt.Errorf("unknown WebSearch backend %q (supported: brave, exa, tavily)", name)
 	}
+	key := os.Getenv(spec.apiKeyEnv)
+	if key == "" {
+		return nil, fmt.Errorf("backend %q selected but %s is not set", name, spec.apiKeyEnv)
+	}
+	return spec.build(key), nil
 }
 
 // effectiveLimit normalises non-positive limits to defaultLimit.
