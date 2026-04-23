@@ -1,0 +1,343 @@
+openapi: 3.1.0
+info:
+  title: Codegen Sandbox Remote Access API
+  version: 0.1.0
+  description: |
+    Human-facing HTTP API for a codegen sandbox pod running in Kubernetes.
+    Designed for the **ingress → routing service → sandbox pod** topology.
+
+    The sandbox does **not** verify OIDC tokens itself. The routing service
+    in front of the pod handles authentication and injects trusted identity
+    headers (`X-Forwarded-Sub`, `X-Forwarded-User`, `X-Forwarded-Groups`)
+    into every forwarded request. Network-level trust (a `NetworkPolicy`
+    restricting `-api-addr` to the routing service's pods) is what makes
+    header trust safe.
+
+    Every endpoint listed here is gated behind a `-enable-*` flag on the
+    sandbox binary and returns 404 when its feature is not enabled. The
+    routes that upgrade to WebSocket (`/api/exec`, `/api/port-forward`)
+    cannot be fully described in OpenAPI — their wire formats are
+    documented in the developer guide.
+  license:
+    name: MIT
+servers:
+  - url: http://localhost:19877
+    description: Local dev (`-api-addr=127.0.0.1:19877 -dev-mode`)
+  - url: https://sandbox.example.com
+    description: Production, via routing service
+
+security:
+  - forwardedIdentity: []
+
+tags:
+  - name: observability
+    description: Read-only endpoints for inspecting the sandbox workspace.
+  - name: interactive
+    description: WebSocket endpoints for shell and TCP access.
+  - name: ssh
+    description: Embedded SSH server control plane.
+  - name: meta
+    description: Self-describing endpoints (spec + docs UI).
+
+components:
+  securitySchemes:
+    forwardedIdentity:
+      type: apiKey
+      in: header
+      name: X-Forwarded-Sub
+      description: |
+        Subject identifier injected by the routing service. Always
+        required in production. When the sandbox is started with
+        `-dev-mode`, missing identity headers are accepted and a
+        placeholder `sub=dev` is injected.
+
+        `X-Forwarded-User` and `X-Forwarded-Groups` (comma-separated)
+        may accompany it and are used for audit logging.
+
+  parameters:
+    FilePath:
+      name: path
+      in: query
+      required: true
+      description: Workspace-relative file path. Resolved through path containment; `..` escapes are rejected with 400.
+      schema:
+        type: string
+        example: internal/server/server.go
+    TargetPort:
+      name: port
+      in: query
+      required: true
+      description: TCP port to dial on `127.0.0.1` inside the sandbox pod. Non-privileged ports only.
+      schema:
+        type: integer
+        minimum: 1024
+        maximum: 65535
+        example: 2345
+
+  schemas:
+    TreeEntry:
+      type: object
+      required: [path, type]
+      properties:
+        path:
+          type: string
+          description: Path relative to the workspace root.
+        type:
+          type: string
+          enum: [file, dir]
+        size:
+          type: integer
+          format: int64
+          description: Byte size; omitted for directories.
+    TreeResponse:
+      type: object
+      required: [root, entries]
+      properties:
+        root:
+          type: string
+          description: Absolute workspace root (inside the sandbox container).
+        entries:
+          type: array
+          items:
+            $ref: "#/components/schemas/TreeEntry"
+    FSEvent:
+      type: object
+      description: One file-system event on the SSE stream. `.git` and `node_modules` are filtered out.
+      required: [type, path, ts]
+      properties:
+        type:
+          type: string
+          enum: [create, write, remove, rename]
+        path:
+          type: string
+          description: Path relative to the workspace root.
+        ts:
+          type: string
+          format: date-time
+    AuthorizedKeyRequest:
+      type: object
+      required: [public_key]
+      properties:
+        public_key:
+          type: string
+          description: OpenSSH-formatted public key (`ssh-ed25519 AAAA… optional-comment`).
+          example: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIO0xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx user@laptop"
+    SSHPortResponse:
+      type: object
+      required: [port]
+      properties:
+        port:
+          type: integer
+          minimum: 1
+          maximum: 65535
+          description: Port on which the embedded SSH server is listening on `127.0.0.1` inside the pod.
+    Error:
+      type: object
+      description: Plain-text error bodies are used on most 4xx responses; this schema documents their approximate shape where relevant.
+      properties:
+        error:
+          type: string
+
+  responses:
+    Unauthorized:
+      description: Identity headers are missing and `-dev-mode` is not set.
+      content:
+        text/plain:
+          schema:
+            type: string
+            example: missing identity headers
+    NotFound:
+      description: The feature flag for this endpoint is not enabled.
+
+paths:
+  /api/tree:
+    get:
+      tags: [observability]
+      summary: List workspace tree
+      description: Returns every file and directory under the workspace root, honoring `.gitignore` via `rg --files`.
+      operationId: getTree
+      responses:
+        "200":
+          description: Workspace tree
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TreeResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/file:
+    get:
+      tags: [observability]
+      summary: Read a file
+      description: Returns raw file bytes. Content-Type is sniffed via `http.DetectContentType`, overridden to `text/plain; charset=utf-8` for common text extensions.
+      operationId: getFile
+      parameters:
+        - $ref: "#/components/parameters/FilePath"
+      responses:
+        "200":
+          description: File bytes
+          content:
+            text/plain:
+              schema:
+                type: string
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        "400":
+          description: Invalid path (outside workspace) or directory.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: File does not exist, or the feature flag is not enabled.
+        "413":
+          description: File exceeds the 2 MiB cap.
+
+  /api/events:
+    get:
+      tags: [observability]
+      summary: File-system event stream (SSE)
+      description: |
+        Server-Sent Events stream. Each event is a JSON-encoded `FSEvent` in
+        the SSE `data:` field. A `: ping` keep-alive is sent every 30s. The
+        stream closes when the client disconnects.
+      operationId: getEvents
+      responses:
+        "200":
+          description: Event stream
+          content:
+            text/event-stream:
+              schema:
+                $ref: "#/components/schemas/FSEvent"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/exec:
+    get:
+      tags: [interactive]
+      summary: WebSocket PTY session
+      description: |
+        Upgrades to WebSocket. Client and server exchange JSON text frames:
+
+        ```
+        client→server: {"type":"stdin","data":"<base64>"}
+        client→server: {"type":"resize","cols":80,"rows":24}
+        server→client: {"type":"stdout","data":"<base64>"}
+        server→client: {"type":"exit","code":0}
+        ```
+
+        Binary PTY bytes are base64-encoded to keep frames uniform.
+        Closing the WebSocket kills the entire process group.
+      operationId: exec
+      responses:
+        "101":
+          description: Switching Protocols (WebSocket upgrade)
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/port-forward:
+    get:
+      tags: [interactive]
+      summary: WebSocket raw-TCP tunnel to `127.0.0.1:port`
+      description: |
+        Upgrades to WebSocket; binary frames carry raw TCP bytes in both
+        directions to `127.0.0.1:port` inside the sandbox pod.
+
+        The dial target is **hard-coded to loopback**; this endpoint cannot
+        be used as an SSRF proxy. The audit log entry on close records
+        `{sub, port, bytes_in, bytes_out, duration}`.
+      operationId: portForward
+      parameters:
+        - $ref: "#/components/parameters/TargetPort"
+      responses:
+        "101":
+          description: Switching Protocols (WebSocket upgrade)
+        "400":
+          description: Invalid or missing `port` query parameter.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/ssh-authorized-keys:
+    post:
+      tags: [ssh]
+      summary: Register an ephemeral SSH public key
+      description: |
+        Stores the public key in the in-memory authorized-keys set keyed by
+        the caller's subject. Keys live for the process lifetime only —
+        containers are ephemeral and one pod serves one user.
+      operationId: addSSHKey
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuthorizedKeyRequest"
+      responses:
+        "201":
+          description: Key registered.
+        "400":
+          description: Malformed body or unparseable key.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "405":
+          description: Method not allowed (only POST is accepted).
+
+  /api/ssh-port:
+    get:
+      tags: [ssh]
+      summary: Return the embedded SSH server's listener port
+      description: |
+        The embedded SSH server binds `127.0.0.1:0`; the OS-assigned port is
+        returned here so CLIs can configure `ProxyCommand` dynamically. The
+        SSH server is only reachable through `/api/port-forward?port=N`.
+      operationId: getSSHPort
+      responses:
+        "200":
+          description: SSH port
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SSHPortResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "405":
+          description: Method not allowed (only GET is accepted).
+
+  /api/openapi.yaml:
+    get:
+      tags: [meta]
+      summary: This OpenAPI specification
+      operationId: getOpenAPISpec
+      responses:
+        "200":
+          description: OpenAPI YAML
+          content:
+            application/yaml:
+              schema:
+                type: string
+
+  /api/docs:
+    get:
+      tags: [meta]
+      summary: Interactive API documentation (Scalar UI)
+      operationId: getDocs
+      responses:
+        "200":
+          description: HTML page rendering this spec via Scalar.
+          content:
+            text/html:
+              schema:
+                type: string

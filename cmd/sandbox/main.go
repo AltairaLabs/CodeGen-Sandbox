@@ -11,15 +11,30 @@ import (
 )
 
 func main() {
-	addr := flag.String("addr", ":8080", "HTTP listen address")
+	addr := flag.String("addr", ":8080", "HTTP listen address for the MCP server")
+	apiAddr := flag.String("api-addr", "", "HTTP listen address for the human-facing API (empty = disabled)")
+	enableAPI := flag.Bool("enable-api", false, "mount /api/tree, /api/file, /api/events on -api-addr")
+	enableExec := flag.Bool("enable-exec", false, "mount /api/exec (WebSocket PTY) on -api-addr")
+	enablePortForward := flag.Bool("enable-port-forward", false, "mount /api/port-forward (WebSocket TCP tunnel to loopback) on -api-addr")
+	enableSSH := flag.Bool("enable-ssh", false, "start embedded SSH server on 127.0.0.1 and mount /api/ssh-authorized-keys + /api/ssh-port on -api-addr")
 	root := flag.String("workspace", "/workspace", "workspace root (absolute path)")
+	devMode := flag.Bool("dev-mode", false, "trust-no-headers dev fallback: inject a placeholder identity when forwarded headers are absent")
 	flag.Parse()
 
 	// SIGINT for Ctrl-C; SIGTERM for docker stop and most orchestrators.
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	if err := Run(ctx, *addr, *root); err != nil {
+	if err := Run(ctx, Config{
+		Addr:              *addr,
+		APIAddr:           *apiAddr,
+		WorkspaceRoot:     *root,
+		DevMode:           *devMode,
+		EnableAPI:         *enableAPI,
+		EnableExec:        *enableExec,
+		EnablePortForward: *enablePortForward,
+		EnableSSH:         *enableSSH,
+	}); err != nil {
 		log.Fatal(err)
 	}
 }

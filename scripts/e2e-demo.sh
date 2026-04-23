@@ -41,13 +41,26 @@ cleanup() {
     echo
     echo "❌ e2e demo failed (exit $ec)."
   fi
-  exit $ec
+  # Inside an EXIT trap, `return` propagates the exit code just like `exit`
+  # and lets the shell finish normally. Explicit return keeps shelldre:S7682
+  # happy without changing semantics.
+  return $ec
 }
 trap cleanup EXIT
 
-say()  { printf "\n\033[1;34m▶ %s\033[0m\n" "$*" ; }
-pass() { printf "   \033[1;32m✓\033[0m %s\n" "$*" ; }
-fail() { printf "   \033[1;31m✗\033[0m %s\n" "$*"; exit 1 ; }
+say()  { printf "\n\033[1;34m▶ %s\033[0m\n" "$*" ; return 0 ; }
+pass() { printf "   \033[1;32m✓\033[0m %s\n" "$*" ; return 0 ; }
+fail() {
+  printf "   \033[1;31m✗\033[0m %s\n" "$*" >&2
+  exit 1
+}
+
+# String constants repeated across assertions. Hoisted to satisfy
+# shelldre:S1192 (duplicated literal) and to keep the expected-output
+# strings in one place.
+readonly EDIT_OK_LINE='replaced 1 occurrence'
+readonly EDIT_OK_MSG='Edit did not report replacement'
+readonly INDENT_SED='s/^/   /'
 
 # --- Build + start sandbox -------------------------------------------
 
@@ -153,7 +166,7 @@ OUT=$(mcp_call "Bash" '{
   "description": "scaffold a Go module with a passing test",
   "timeout": 30
 }')
-printf '%s\n' "$OUT" | sed 's/^/   /'
+printf '%s\n' "$OUT" | sed "$INDENT_SED"
 grep -q 'exit: 0' <<<"$OUT" 2>/dev/null || ! grep -q 'exit:' <<<"$OUT" || fail "scaffold exited non-zero"
 grep -q 'scaffolded' <<<"$OUT" || fail "did not see 'scaffolded' in Bash output"
 pass "module scaffolded"
@@ -162,7 +175,7 @@ pass "module scaffolded"
 
 say "2. Read probe.go"
 OUT=$(mcp_call "Read" '{"file_path": "probe.go"}')
-printf '%s\n' "$OUT" | head -5 | sed 's/^/   /'
+printf '%s\n' "$OUT" | head -5 | sed "$INDENT_SED"
 grep -q 'func Add' <<<"$OUT" || fail "Read output missing func Add"
 grep -q 'func Write() error' <<<"$OUT" || fail "Read output missing func Write"
 pass "Read returned numbered lines"
@@ -175,8 +188,8 @@ OUT=$(mcp_call "Edit" '{
   "old_string": "func Write() error { return os.WriteFile(\"x\", []byte(\"y\"), 0o644) }",
   "new_string": "func Write() { os.WriteFile(\"x\", []byte(\"y\"), 0o644) }"
 }')
-printf '%s\n' "$OUT" | sed 's/^/   /'
-grep -q 'replaced 1 occurrence' <<<"$OUT" || fail "Edit did not report replacement"
+printf '%s\n' "$OUT" | sed "$INDENT_SED"
+grep -q "$EDIT_OK_LINE" <<<"$OUT" || fail "$EDIT_OK_MSG"
 grep -q 'post-edit lint findings' <<<"$OUT" || fail "post-edit lint feedback missing — the critical quality feature"
 grep -qE 'errcheck|Error return value' <<<"$OUT" || fail "errcheck finding missing from post-edit feedback"
 pass "post-edit lint feedback fired as expected"
@@ -189,8 +202,8 @@ OUT=$(mcp_call "Edit" '{
   "old_string": "func Write() { os.WriteFile(\"x\", []byte(\"y\"), 0o644) }",
   "new_string": "func Write() error { return os.WriteFile(\"x\", []byte(\"y\"), 0o644) }"
 }')
-printf '%s\n' "$OUT" | sed 's/^/   /'
-grep -q 'replaced 1 occurrence' <<<"$OUT" || fail "Edit did not report replacement"
+printf '%s\n' "$OUT" | sed "$INDENT_SED"
+grep -q "$EDIT_OK_LINE" <<<"$OUT" || fail "$EDIT_OK_MSG"
 if grep -q 'post-edit lint findings' <<<"$OUT"; then
   fail "post-edit lint block should be absent on a clean edit"
 fi
@@ -204,14 +217,14 @@ OUT=$(mcp_call "Edit" '{
   "old_string": "func Add(a, b int) int { return a + b }",
   "new_string": "func Add(a, b int) int { return a - b }"
 }')
-grep -q 'replaced 1 occurrence' <<<"$OUT" || fail "Edit did not report replacement"
+grep -q "$EDIT_OK_LINE" <<<"$OUT" || fail "$EDIT_OK_MSG"
 pass "Add broken on purpose"
 
 # --- 6. run_tests: expect failure -------------------------------------
 
 say "6. run_tests — expect FAIL"
 OUT=$(mcp_call "run_tests" '{"timeout": 120}')
-printf '%s\n' "$OUT" | head -10 | sed 's/^/   /'
+printf '%s\n' "$OUT" | head -10 | sed "$INDENT_SED"
 grep -q 'exit: 0' <<<"$OUT" && fail "tests passed but the implementation was broken"
 grep -qE 'FAIL|Add\(1,2\)' <<<"$OUT" || fail "expected test failure output missing"
 pass "tests failed as expected"
@@ -224,14 +237,14 @@ OUT=$(mcp_call "Edit" '{
   "old_string": "func Add(a, b int) int { return a - b }",
   "new_string": "func Add(a, b int) int { return a + b }"
 }')
-grep -q 'replaced 1 occurrence' <<<"$OUT" || fail "Edit did not report replacement"
+grep -q "$EDIT_OK_LINE" <<<"$OUT" || fail "$EDIT_OK_MSG"
 pass "Add restored"
 
 # --- 8. run_tests: expect pass ----------------------------------------
 
 say "8. run_tests — expect PASS"
 OUT=$(mcp_call "run_tests" '{"timeout": 120}')
-printf '%s\n' "$OUT" | head -5 | sed 's/^/   /'
+printf '%s\n' "$OUT" | head -5 | sed "$INDENT_SED"
 grep -q 'exit: 0' <<<"$OUT" || fail "tests did not exit 0 after restore"
 grep -qE 'ok\s+example.com/probe' <<<"$OUT" || fail "expected PASS line missing"
 pass "tests passed"

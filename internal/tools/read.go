@@ -13,7 +13,7 @@ import (
 const defaultReadLimit = 2000
 
 // RegisterRead registers the Read tool with the given MCP server.
-func RegisterRead(s Registrar, deps *Deps) {
+func RegisterRead(s ToolAdder, deps *Deps) {
 	tool := mcp.NewTool("Read",
 		mcp.WithDescription("Read a file from the workspace. Returns cat -n style line-numbered text."),
 		mcp.WithString("file_path", mcp.Required(), mcp.Description("Absolute or workspace-relative path.")),
@@ -28,31 +28,14 @@ func HandleRead(deps *Deps) func(context.Context, mcp.CallToolRequest) (*mcp.Cal
 	return func(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		args, _ := req.Params.Arguments.(map[string]any)
 
-		filePath, _ := args["file_path"].(string)
-		if filePath == "" {
-			return ErrorResult("file_path is required"), nil
+		filePath, offset, limit, errRes := parseReadArgs(args)
+		if errRes != nil {
+			return errRes, nil
 		}
 
-		abs, err := deps.Workspace.Resolve(filePath)
-		if err != nil {
-			return ErrorResult("resolve path: %v", err), nil
-		}
-
-		info, err := os.Stat(abs)
-		if err != nil {
-			return ErrorResult("stat: %v", err), nil
-		}
-		if info.IsDir() {
-			return ErrorResult("path is a directory: %s", filePath), nil
-		}
-
-		offset := 1
-		if v, ok := args["offset"].(float64); ok && int(v) > 1 {
-			offset = int(v)
-		}
-		limit := defaultReadLimit
-		if v, ok := args["limit"].(float64); ok && int(v) > 0 {
-			limit = int(v)
+		abs, errRes := resolveReadPath(deps, filePath)
+		if errRes != nil {
+			return errRes, nil
 		}
 
 		body, err := readNumbered(abs, offset, limit)
@@ -63,6 +46,37 @@ func HandleRead(deps *Deps) func(context.Context, mcp.CallToolRequest) (*mcp.Cal
 		deps.Tracker.MarkRead(abs)
 		return TextResult(body), nil
 	}
+}
+
+func parseReadArgs(args map[string]any) (filePath string, offset, limit int, errRes *mcp.CallToolResult) {
+	filePath, _ = args["file_path"].(string)
+	if filePath == "" {
+		return "", 0, 0, ErrorResult("file_path is required")
+	}
+	offset = 1
+	if v, ok := args["offset"].(float64); ok && int(v) > 1 {
+		offset = int(v)
+	}
+	limit = defaultReadLimit
+	if v, ok := args["limit"].(float64); ok && int(v) > 0 {
+		limit = int(v)
+	}
+	return filePath, offset, limit, nil
+}
+
+func resolveReadPath(deps *Deps, filePath string) (string, *mcp.CallToolResult) {
+	abs, err := deps.Workspace.Resolve(filePath)
+	if err != nil {
+		return "", ErrorResult("resolve path: %v", err)
+	}
+	info, err := os.Stat(abs)
+	if err != nil {
+		return "", ErrorResult("stat: %v", err)
+	}
+	if info.IsDir() {
+		return "", ErrorResult("path is a directory: %s", filePath)
+	}
+	return abs, nil
 }
 
 func readNumbered(abs string, offset, limit int) (body string, err error) {

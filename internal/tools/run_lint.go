@@ -16,7 +16,7 @@ const (
 )
 
 // RegisterRunLint registers the run_lint tool on the given MCP server.
-func RegisterRunLint(s Registrar, deps *Deps) {
+func RegisterRunLint(s ToolAdder, deps *Deps) {
 	tool := mcp.NewTool("run_lint",
 		mcp.WithDescription("Run the project's linter. Returns structured findings as 'file:line:col:rule: message' followed by 'N findings'. Project type is detected from the workspace root (currently: Go via go.mod, uses golangci-lint)."),
 		mcp.WithNumber("timeout", mcp.Description(fmt.Sprintf("Timeout in seconds. Default %d, clamped to a maximum of %d.", defaultRunLintTimeoutSec, maxRunLintTimeoutSec))),
@@ -33,27 +33,11 @@ func HandleRunLint(deps *Deps) func(context.Context, mcp.CallToolRequest) (*mcp.
 		}
 
 		args, _ := req.Params.Arguments.(map[string]any)
-		timeoutSec := defaultRunLintTimeoutSec
-		if v, ok := args["timeout"].(float64); ok && int(v) > 0 {
-			timeoutSec = int(v)
-			if timeoutSec > maxRunLintTimeoutSec {
-				timeoutSec = maxRunLintTimeoutSec
-			}
-		}
+		timeoutSec := parseLintTimeout(args)
 
 		findings, err := verify.Lint(ctx, deps.Workspace.Root(), timeoutSec)
-		if errors.Is(err, verify.ErrLinterMissing) {
-			// Name the missing binary so operators can tell whether it's a
-			// dev-env or Docker-image misconfiguration.
-			binary := "<unknown>"
-			if cmd := det.LintCmd(); len(cmd) > 0 {
-				binary = cmd[0]
-			}
-			return ErrorResult("linter not installed: %s", binary), nil
-		}
-		if err != nil && len(findings) == 0 {
-			// No partial results worth surfacing — report the error.
-			return ErrorResult("run_lint: %v", err), nil
+		if errRes := lintErrorResult(det, findings, err); errRes != nil {
+			return errRes, nil
 		}
 
 		// Happy path OR partial-findings-with-error: emit the findings we
@@ -66,6 +50,33 @@ func HandleRunLint(deps *Deps) func(context.Context, mcp.CallToolRequest) (*mcp.
 		}
 		return TextResult(body), nil
 	}
+}
+
+func parseLintTimeout(args map[string]any) int {
+	timeoutSec := defaultRunLintTimeoutSec
+	v, ok := args["timeout"].(float64)
+	if !ok || int(v) <= 0 {
+		return timeoutSec
+	}
+	timeoutSec = int(v)
+	if timeoutSec > maxRunLintTimeoutSec {
+		timeoutSec = maxRunLintTimeoutSec
+	}
+	return timeoutSec
+}
+
+func lintErrorResult(det verify.Detector, findings []verify.LintFinding, err error) *mcp.CallToolResult {
+	if errors.Is(err, verify.ErrLinterMissing) {
+		binary := "<unknown>"
+		if cmd := det.LintCmd(); len(cmd) > 0 {
+			binary = cmd[0]
+		}
+		return ErrorResult("linter not installed: %s", binary)
+	}
+	if err != nil && len(findings) == 0 {
+		return ErrorResult("run_lint: %v", err)
+	}
+	return nil
 }
 
 // formatFindings renders a []LintFinding as agent-facing text with one

@@ -13,7 +13,7 @@ import (
 const searchBackendEnvVar = "CODEGEN_SANDBOX_SEARCH_BACKEND"
 
 // RegisterWebSearch registers the WebSearch tool.
-func RegisterWebSearch(s Registrar, deps *Deps) {
+func RegisterWebSearch(s ToolAdder, deps *Deps) {
 	tool := mcp.NewTool("WebSearch",
 		mcp.WithDescription("Search the web. Requires an operator-configured backend (Brave, Exa, Tavily) via the CODEGEN_SANDBOX_SEARCH_BACKEND env var plus the corresponding API key. If no backend is configured, this tool returns a clear error."),
 		mcp.WithString("query", mcp.Required(), mcp.Description("Search query.")),

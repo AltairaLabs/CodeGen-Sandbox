@@ -13,7 +13,7 @@ import (
 const defaultGlobLimit = 100
 
 // RegisterGlob registers the Glob tool on the given MCP server.
-func RegisterGlob(s Registrar, deps *Deps) {
+func RegisterGlob(s ToolAdder, deps *Deps) {
 	tool := mcp.NewTool("Glob",
 		mcp.WithDescription("Find files matching a glob pattern. Respects .gitignore. Returns paths relative to the workspace root (including the 'path' prefix when scoped), sorted by mtime (most recent first)."),
 		mcp.WithString("pattern", mcp.Required(), mcp.Description("Glob pattern supporting '*', '?', '[...]', and '**'. e.g. '**/*.go' or 'src/**/*.ts'. Brace expansion and negation are NOT supported — make multiple calls for multi-extension matches.")),
@@ -34,57 +34,19 @@ func HandleGlob(deps *Deps) func(context.Context, mcp.CallToolRequest) (*mcp.Cal
 		}
 
 		root := deps.Workspace.Root()
+		scopeArg, errRes := resolveGlobScope(deps, args, root)
+		if errRes != nil {
+			return errRes, nil
+		}
+		limit := parseGlobLimit(args)
 
-		// Keep cwd at the workspace root so emitted paths are always
-		// workspace-relative, matching Grep's contract. If the caller scoped
-		// the search to a subdirectory via `path`, pass it as a positional
-		// arg to rg (which prefixes the scope in its output).
-		var scopeArg string
-		if pathArg, ok := args["path"].(string); ok && pathArg != "" {
-			abs, err := deps.Workspace.Resolve(pathArg)
-			if err != nil {
-				return ErrorResult("resolve path: %v", err), nil
-			}
-			info, err := os.Stat(abs)
-			if err != nil {
-				return ErrorResult("stat path: %v", err), nil
-			}
-			if !info.IsDir() {
-				return ErrorResult("path is not a directory: %s", pathArg), nil
-			}
-			rel, err := filepath.Rel(root, abs)
-			if err != nil {
-				return ErrorResult("relative path: %v", err), nil
-			}
-			if rel != "." {
-				scopeArg = rel
-			}
-		}
-
-		limit := defaultGlobLimit
-		if v, ok := args["limit"].(float64); ok && int(v) > 0 {
-			limit = int(v)
-		}
-
-		// Run rg --files without a -g filter so that .gitignore rules are
-		// respected (rg's -g whitelists files which overrides ignore rules).
-		// We apply the glob pattern ourselves in Go after getting the list.
-		rgArgs := []string{
-			"--files",
-			"--no-require-git",
-			"--color=never",
-		}
-		if scopeArg != "" {
-			rgArgs = append(rgArgs, scopeArg)
-		}
-		out, err := runRipgrep(ctx, rgArgs, root)
+		out, err := runRipgrep(ctx, buildGlobRgArgs(scopeArg), root)
 		if err != nil {
 			return ErrorResult("glob: %v", err), nil
 		}
 
-		all := splitLines(out)
 		var paths []string
-		for _, p := range all {
+		for _, p := range splitLines(out) {
 			if matchDoublestar(pattern, p) {
 				paths = append(paths, p)
 			}
@@ -96,6 +58,53 @@ func HandleGlob(deps *Deps) func(context.Context, mcp.CallToolRequest) (*mcp.Cal
 		}
 		return TextResult(strings.Join(paths, "\n")), nil
 	}
+}
+
+// resolveGlobScope returns the positional scope arg for rg, or "" for the
+// workspace root. The rg cwd is always the workspace root so emitted paths
+// stay workspace-relative (matching Grep's contract).
+func resolveGlobScope(deps *Deps, args map[string]any, root string) (string, *mcp.CallToolResult) {
+	pathArg, ok := args["path"].(string)
+	if !ok || pathArg == "" {
+		return "", nil
+	}
+	abs, err := deps.Workspace.Resolve(pathArg)
+	if err != nil {
+		return "", ErrorResult("resolve path: %v", err)
+	}
+	info, err := os.Stat(abs)
+	if err != nil {
+		return "", ErrorResult("stat path: %v", err)
+	}
+	if !info.IsDir() {
+		return "", ErrorResult("path is not a directory: %s", pathArg)
+	}
+	rel, err := filepath.Rel(root, abs)
+	if err != nil {
+		return "", ErrorResult("relative path: %v", err)
+	}
+	if rel == "." {
+		return "", nil
+	}
+	return rel, nil
+}
+
+func parseGlobLimit(args map[string]any) int {
+	if v, ok := args["limit"].(float64); ok && int(v) > 0 {
+		return int(v)
+	}
+	return defaultGlobLimit
+}
+
+// buildGlobRgArgs runs rg --files without -g so .gitignore rules are
+// respected (rg's -g whitelists files and overrides ignores). We apply the
+// glob pattern in Go post-hoc.
+func buildGlobRgArgs(scopeArg string) []string {
+	rgArgs := []string{"--files", "--no-require-git", "--color=never"}
+	if scopeArg != "" {
+		rgArgs = append(rgArgs, scopeArg)
+	}
+	return rgArgs
 }
 
 // matchDoublestar reports whether path matches the given glob pattern.
@@ -123,54 +132,52 @@ func matchDoublestar(pattern, path string) bool {
 // strings.
 func doublestarMatch(pattern, path string) bool {
 	for pattern != "" {
-		// Consume leading "**" segment.
-		if strings.HasPrefix(pattern, "**/") {
-			rest := pattern[3:]
-			// ** matches zero path components (try without consuming any of path)
-			if doublestarMatch(rest, path) {
-				return true
-			}
-			// or skip one component of path and recurse
-			if i := strings.Index(path, "/"); i >= 0 {
-				return doublestarMatch(pattern, path[i+1:])
-			}
+		if matched, ok := matchDoublestarPrefix(pattern, path); ok {
+			return matched
+		}
+
+		var pp, qp string
+		pp, pattern = popSegment(pattern)
+		qp, path = popSegment(path)
+
+		if ok, _ := filepath.Match(pp, qp); !ok {
 			return false
 		}
-		if pattern == "**" {
-			return true
-		}
-
-		// Extract next segment from pattern.
-		pi := strings.Index(pattern, "/")
-		pp := pattern
-		if pi >= 0 {
-			pp = pattern[:pi]
-			pattern = pattern[pi+1:]
-		} else {
-			pattern = ""
-		}
-
-		// Extract next segment from path.
-		qi := strings.Index(path, "/")
-		qp := path
-		if qi >= 0 {
-			qp = path[:qi]
-			path = path[qi+1:]
-		} else {
-			path = ""
-		}
-
-		ok, _ := filepath.Match(pp, qp)
-		if !ok {
-			return false
-		}
-
-		// If pattern is exhausted, path must also be exhausted.
 		if pattern == "" {
 			return path == ""
 		}
 	}
 	return path == ""
+}
+
+// matchDoublestarPrefix handles "**"-prefixed patterns. It reports whether a
+// terminal answer was reached (ok=true) along with that answer (matched).
+func matchDoublestarPrefix(pattern, path string) (matched, ok bool) {
+	if pattern == "**" {
+		return true, true
+	}
+	if !strings.HasPrefix(pattern, "**/") {
+		return false, false
+	}
+	rest := pattern[3:]
+	if doublestarMatch(rest, path) {
+		return true, true
+	}
+	if i := strings.Index(path, "/"); i >= 0 {
+		return doublestarMatch(pattern, path[i+1:]), true
+	}
+	return false, true
+}
+
+// popSegment splits s into (first segment, remainder) at the first '/'. If
+// no '/' is present the whole string is returned as the segment and the
+// remainder is empty.
+func popSegment(s string) (seg, rest string) {
+	i := strings.Index(s, "/")
+	if i < 0 {
+		return s, ""
+	}
+	return s[:i], s[i+1:]
 }
 
 func splitLines(b []byte) []string {
