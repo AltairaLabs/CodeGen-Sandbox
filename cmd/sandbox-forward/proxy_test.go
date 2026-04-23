@@ -228,6 +228,25 @@ func TestProxy_Listener_Echo_WithAuth(t *testing.T) {
 	}
 }
 
+// syncBuffer is a bytes.Buffer guarded by a mutex so the test goroutine and
+// the tunnel goroutine can share an io.Writer without tripping -race.
+type syncBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *syncBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *syncBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
+}
+
 func TestProxy_Stdio_Echo(t *testing.T) {
 	echoPort := startEchoTCPServer(t)
 	fake := newFakeServer(0)
@@ -238,7 +257,7 @@ func TestProxy_Stdio_Echo(t *testing.T) {
 	require.NoError(t, err)
 
 	stdinR, stdinW := io.Pipe()
-	var stdout bytes.Buffer
+	var stdout syncBuffer
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	t.Cleanup(cancel)
@@ -277,7 +296,7 @@ func TestProxy_SSH_ResolvesPort(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	stdinR, stdinW := io.Pipe()
-	var stdout bytes.Buffer
+	var stdout syncBuffer
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	t.Cleanup(cancel)
