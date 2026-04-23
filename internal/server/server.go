@@ -37,9 +37,10 @@ func New(ws *workspace.Workspace) (*Server, error) {
 	// output-layer check later (logging, metrics) would slot in here.
 	reg := &scrubbingRegistrar{inner: s.mcp}
 	deps := &tools.Deps{
-		Workspace: s.ws,
-		Tracker:   s.tracker,
-		Shells:    tools.NewShellRegistry(),
+		Workspace:   s.ws,
+		Tracker:     s.tracker,
+		Shells:      tools.NewShellRegistry(),
+		TestResults: tools.NewTestResultStore(),
 	}
 	tools.RegisterRead(reg, deps)
 	tools.RegisterWrite(reg, deps)
@@ -52,6 +53,7 @@ func New(ws *workspace.Workspace) (*Server, error) {
 	tools.RegisterRunTests(reg, deps)
 	tools.RegisterRunLint(reg, deps)
 	tools.RegisterRunTypecheck(reg, deps)
+	tools.RegisterLastTestFailures(reg, deps)
 	tools.RegisterSnapshots(reg, deps)
 	// Web tools (WebFetch / WebSearch) are NOT registered here. They are
 	// stateless and don't need the sandbox's filesystem or process

@@ -18,6 +18,10 @@ type Deps struct {
 	// Shells hosts background bash shells for BashOutput and KillShell.
 	// May be nil in tests that don't exercise background mode.
 	Shells *ShellRegistry
+	// TestResults records the most recent run_tests outcome for
+	// last_test_failures to retrieve. May be nil in tests that don't
+	// exercise that pair.
+	TestResults *TestResultStore
 }
 
 // ErrorResult wraps a user-visible message as an MCP error result.

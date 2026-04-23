@@ -51,3 +51,7 @@ var clippyLineRe = regexp.MustCompile(
 func (*rustDetector) ParseLint(_, stderr string) []LintFinding {
 	return parseLintRegex(stderr, clippyLineRe)
 }
+
+// ParseTestFailures is not yet implemented for Rust; returns nil so
+// last_test_failures surfaces a "not supported for rust" result.
+func (*rustDetector) ParseTestFailures(_, _ string) []TestFailure { return nil }
