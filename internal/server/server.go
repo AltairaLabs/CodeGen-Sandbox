@@ -55,6 +55,7 @@ func New(ws *workspace.Workspace) (*Server, error) {
 	tools.RegisterRunTypecheck(reg, deps)
 	tools.RegisterLastTestFailures(reg, deps)
 	tools.RegisterSnapshots(reg, deps)
+	tools.RegisterSearchCode(reg, deps)
 	// Web tools (WebFetch / WebSearch) are NOT registered here. They are
 	// stateless and don't need the sandbox's filesystem or process
 	// namespace, so operators hook up vendor MCP servers alongside this
