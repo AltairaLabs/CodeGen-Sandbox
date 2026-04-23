@@ -52,6 +52,8 @@ func New(ws *workspace.Workspace) (*Server, error) {
 	tools.RegisterRunTests(reg, deps)
 	tools.RegisterRunLint(reg, deps)
 	tools.RegisterRunTypecheck(reg, deps)
+	tools.RegisterWebFetch(reg, deps)
+	tools.RegisterWebSearch(reg, deps)
 	return s, nil
 }
 
