@@ -16,6 +16,9 @@ import (
 	"syscall"
 )
 
+// version is stamped by the release workflow via `-ldflags "-X main.version=<tag>"`.
+var version = "dev"
+
 func main() {
 	log.SetFlags(0)
 
@@ -39,6 +42,9 @@ func dispatch(ctx context.Context, args []string) error {
 		return runProxy(ctx, args[1:])
 	case "ssh-setup":
 		return runSSHSetup(ctx, args[1:])
+	case "-v", "--version", "version":
+		fmt.Println("sandbox-forward", version)
+		return nil
 	case "-h", "--help", "help":
 		usage()
 		return nil

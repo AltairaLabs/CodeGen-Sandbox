@@ -35,6 +35,11 @@ export default defineConfig({
           autogenerate: { directory: 'tools' },
         },
         {
+          label: 'Guides',
+          collapsed: true,
+          autogenerate: { directory: 'guides' },
+        },
+        {
           label: 'Concepts',
           collapsed: true,
           autogenerate: { directory: 'concepts' },
