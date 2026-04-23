@@ -13,7 +13,8 @@ The split matters because prompt injection or model error can corrupt the sandbo
 |---|---|
 | Running the model, holding context | Brain (PromptKit) |
 | `TodoWrite`, `SubagentDispatch` | Brain |
-| Everything else: Read, Write, Edit, Glob, Grep, Bash, run_tests/lint/typecheck, WebFetch/WebSearch | Hands (this sandbox) |
+| Filesystem + process tools: Read, Write, Edit, Glob, Grep, Bash, run_tests/lint/typecheck | Hands (this sandbox) |
+| Stateless network tools: WebFetch, WebSearch | Vendor MCP servers, alongside this sandbox — see [Non-sandbox tools](/concepts/non-sandbox-tools/) |
 
 ## Transport
 
@@ -52,12 +53,6 @@ Every tool's text output passes through a regex-based scrubber before it leaves 
 
 See [Secret scrubbing](/concepts/secret-scrubbing/).
 
-### URL filter
-
-`WebFetch` resolves each URL's host and rejects private ranges (RFC1918, link-local including `169.254.169.254`, loopback, IPv6 equivalents) plus known cloud-metadata hostnames. Redirects are re-filtered at each hop.
-
-See [URL filter](/concepts/url-filter/).
-
 ### Post-edit lint feedback
 
 After every successful `Edit` on a Go project, the tool runs `golangci-lint` with a short timeout and appends any findings for the edited file to the response. This is the proposal's "single biggest quality win" — the agent sees mistakes immediately, before it calls `run_lint` or `run_tests`.
@@ -84,14 +79,14 @@ See [Post-edit lint feedback](/concepts/post-edit-lint-feedback/).
 ┌─────────────────────────────────────────────────────────┐
 │ internal/tools                                          │
 │   read / write / edit / glob / grep / bash / run_*      │
-│   bash_output / kill_shell / web_fetch / web_search     │
+│   bash_output / kill_shell                              │
 │   shell_registry  — background shells                   │
 │   exec.go         — shared runVerifyCmd with pgroup kill│
 └─────────────────────────────────────────────────────────┘
               │
               ▼
 ┌─────────────────────────────────┐
-│ internal/{workspace,verify,web,scrub}  — primitives     │
+│ internal/{workspace,verify,scrub}  — primitives         │
 └─────────────────────────────────┘
 ```
 

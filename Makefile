@@ -1,4 +1,4 @@
-.PHONY: build build-forward test test-live lint fmt tidy \
+.PHONY: build build-forward test lint fmt tidy \
         docker-build-tools docker-build docker-run docker-clean \
         docker-build-python docker-build-node docker-build-rust
 
@@ -15,13 +15,6 @@ build-forward:
 
 test:
 	go test ./...
-
-# Live-API smoke against Brave / Exa / Tavily. Each test skips cleanly
-# when its backend's API key env var is unset, so it's fine to run with
-# just one configured. Set CODEGEN_SANDBOX_SEARCH_BACKEND to additionally
-# run the through-the-handler end-to-end check.
-test-live:
-	go test -tags=live -run TestLive ./internal/web/search/... -v
 
 lint:
 	golangci-lint run ./...

@@ -80,7 +80,7 @@ docker run --rm \
 - `--read-only` + `--tmpfs /tmp` — the sandbox writes to `/workspace`, `/tmp`, and language caches only. Make those the only writable paths.
 - `--cap-drop ALL --security-opt=no-new-privileges` — the sandbox needs no Linux capabilities.
 - `--memory` / `--cpus` — prevent resource exhaustion (e.g. an agent running a fork-bomb).
-- `--network` — the biggest lever. `--network=none` breaks `pip install`, `WebFetch`, `WebSearch`. A bridge to a filtering proxy gives you allowlist-based egress and closes the DNS-rebinding gap the [URL filter](/concepts/url-filter/) can't fully cover.
+- `--network` — the biggest lever. `--network=none` breaks `pip install` and any outbound HTTP inside `Bash`. A bridge to a filtering proxy gives you allowlist-based egress, which is the right place to control outbound since this sandbox no longer ships its own URL filter — web tools are served by sibling MCP servers (see [Non-sandbox tools](/concepts/non-sandbox-tools/)).
 
 ## What the operator must provide
 

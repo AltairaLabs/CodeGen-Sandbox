@@ -44,10 +44,6 @@ Blocked cases (with tests):
 
 [Scrubbing middleware](/concepts/secret-scrubbing/) redacts well-known secret shapes from every tool's text output.
 
-### URL filter
-
-[WebFetch](/tools/web-fetch/) rejects private / loopback / metadata IPs and hostnames. DNS is resolved at check-time and every resolved IP is checked.
-
 ## What the sandbox does NOT defend against
 
 - **Determined adversaries.** A compromised agent that knows exactly how the denylist regex works can trivially bypass it with `$(echo su)do`. The defence-in-depth layers raise the accidental-leak bar; container isolation raises the intentional-compromise bar.
