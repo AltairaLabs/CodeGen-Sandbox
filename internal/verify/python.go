@@ -46,6 +46,10 @@ func (*pythonDetector) ParseLint(stdout, _ string) []LintFinding {
 	return parseLintRegex(stdout, ruffLineRe)
 }
 
+// ParseTestFailures is not yet implemented for Python; returns nil so
+// last_test_failures surfaces a "not supported for python" result.
+func (*pythonDetector) ParseTestFailures(_, _ string) []TestFailure { return nil }
+
 // parseLintRegex is the shared implementation for regex-based per-line
 // finding extraction. Named subexpressions `file`, `line`, `col`, `rule`,
 // `msg` are looked up; others are ignored.

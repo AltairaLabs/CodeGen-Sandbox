@@ -44,3 +44,7 @@ var eslintLineRe = regexp.MustCompile(
 func (*nodeDetector) ParseLint(stdout, _ string) []LintFinding {
 	return parseLintRegex(stdout, eslintLineRe)
 }
+
+// ParseTestFailures is not yet implemented for Node; returns nil so
+// last_test_failures surfaces a "not supported for node" result.
+func (*nodeDetector) ParseTestFailures(_, _ string) []TestFailure { return nil }
