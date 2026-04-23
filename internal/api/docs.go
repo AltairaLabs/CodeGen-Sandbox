@@ -1,6 +1,7 @@
 package api
 
 import (
+	// Required so //go:embed below can reference openapi.yaml.
 	_ "embed"
 	"net/http"
 )

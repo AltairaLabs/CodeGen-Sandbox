@@ -235,7 +235,7 @@ func tunnelConn(ctx context.Context, wsTarget string, headers http.Header, in io
 		for {
 			n, rerr := in.Read(buf)
 			if n > 0 {
-				if werr := c.Write(tunnelCtx, websocket.MessageBinary, buf[:n]); werr != nil {
+				if c.Write(tunnelCtx, websocket.MessageBinary, buf[:n]) != nil {
 					cancel()
 					return
 				}

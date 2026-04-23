@@ -159,7 +159,7 @@ func runExecSession(ctx context.Context, c *websocket.Conn, workdir string, onSt
 				continue
 			}
 			var f execFrame
-			if jerr := json.Unmarshal(data, &f); jerr != nil {
+			if json.Unmarshal(data, &f) != nil {
 				// Ignore malformed frames — keep session alive.
 				continue
 			}

@@ -128,7 +128,7 @@ func runPortForward(ctx context.Context, c *websocket.Conn, tcp net.Conn) (int64
 		for {
 			n, err := tcp.Read(buf)
 			if n > 0 {
-				if werr := c.Write(ctx, websocket.MessageBinary, buf[:n]); werr != nil {
+				if c.Write(ctx, websocket.MessageBinary, buf[:n]) != nil {
 					_ = tcp.Close()
 					return
 				}

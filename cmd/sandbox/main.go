@@ -25,7 +25,16 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	if err := Run(ctx, *addr, *apiAddr, *root, *devMode, *enableAPI, *enableExec, *enablePortForward, *enableSSH); err != nil {
+	if err := Run(ctx, Config{
+		Addr:              *addr,
+		APIAddr:           *apiAddr,
+		WorkspaceRoot:     *root,
+		DevMode:           *devMode,
+		EnableAPI:         *enableAPI,
+		EnableExec:        *enableExec,
+		EnablePortForward: *enablePortForward,
+		EnableSSH:         *enableSSH,
+	}); err != nil {
 		log.Fatal(err)
 	}
 }

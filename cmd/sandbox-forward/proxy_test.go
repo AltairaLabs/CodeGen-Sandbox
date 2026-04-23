@@ -105,7 +105,7 @@ func (f *fakePortForwardServer) handler() http.Handler {
 			for {
 				n, err := tcp.Read(buf)
 				if n > 0 {
-					if werr := c.Write(ctx, websocket.MessageBinary, buf[:n]); werr != nil {
+					if c.Write(ctx, websocket.MessageBinary, buf[:n]) != nil {
 						return
 					}
 				}

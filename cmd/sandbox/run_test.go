@@ -15,7 +15,7 @@ func TestRun_CancelledContextExitsCleanly(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		done <- Run(ctx, "127.0.0.1:0", "", dir, false, false, false, false, false)
+		done <- Run(ctx, Config{Addr: "127.0.0.1:0", WorkspaceRoot: dir})
 	}()
 
 	// Give the server a beat to bind, then cancel.
@@ -31,7 +31,10 @@ func TestRun_CancelledContextExitsCleanly(t *testing.T) {
 }
 
 func TestRun_InvalidWorkspaceReturnsError(t *testing.T) {
-	err := Run(context.Background(), "127.0.0.1:0", "", "/nonexistent/codegen-sandbox-test-root", false, false, false, false, false)
+	err := Run(context.Background(), Config{
+		Addr:          "127.0.0.1:0",
+		WorkspaceRoot: "/nonexistent/codegen-sandbox-test-root",
+	})
 	require.Error(t, err)
 }
 
@@ -41,7 +44,13 @@ func TestRun_WithAPIListener_CancelledContextExitsCleanly(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		done <- Run(ctx, "127.0.0.1:0", "127.0.0.1:0", dir, true, true, false, false, false)
+		done <- Run(ctx, Config{
+			Addr:          "127.0.0.1:0",
+			APIAddr:       "127.0.0.1:0",
+			WorkspaceRoot: dir,
+			DevMode:       true,
+			EnableAPI:     true,
+		})
 	}()
 
 	time.Sleep(100 * time.Millisecond)
@@ -61,8 +70,14 @@ func TestRun_WithSSH_CancelledContextExitsCleanly(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		// Only SSH enabled; api listener still mounts because enableSSH=true.
-		done <- Run(ctx, "127.0.0.1:0", "127.0.0.1:0", dir, true, false, false, false, true)
+		// Only SSH enabled; api listener still mounts because EnableSSH=true.
+		done <- Run(ctx, Config{
+			Addr:          "127.0.0.1:0",
+			APIAddr:       "127.0.0.1:0",
+			WorkspaceRoot: dir,
+			DevMode:       true,
+			EnableSSH:     true,
+		})
 	}()
 
 	time.Sleep(100 * time.Millisecond)
