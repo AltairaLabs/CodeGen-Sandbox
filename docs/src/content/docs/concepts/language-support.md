@@ -26,7 +26,7 @@ Extend the `Detector` interface with a method that captures the per-language beh
 - **Post-edit format** ([#14](https://github.com/AltairaLabs/CodeGen-Sandbox/issues/14)) — add `Detector.FormatCheckCmd() []string` + `Detector.ParseFormatDiff(...) []FormatFinding`.
 - **Coverage** ([#16](https://github.com/AltairaLabs/CodeGen-Sandbox/issues/16)) — add `Detector.ParseCoverageProfile(path string) []CoverageEntry`.
 - **LSP navigation** ([#9](https://github.com/AltairaLabs/CodeGen-Sandbox/issues/9)) — language-server launch + teardown lives in `internal/lsp/<language>.go`, the Detector exposes only `LSPCommand() []string`.
-- **AST edits** / **semantic search** ([#10](https://github.com/AltairaLabs/CodeGen-Sandbox/issues/10), [#11](https://github.com/AltairaLabs/CodeGen-Sandbox/issues/11)) — tree-sitter grammar registered per language in a shared `internal/ast/` registry keyed by `Detector.Name()`.
+- **AST edits** / **semantic search** ([#10](https://github.com/AltairaLabs/CodeGen-Sandbox/issues/10), [#11](https://github.com/AltairaLabs/CodeGen-Sandbox/issues/11)) — per-language adapter registered in `internal/ast/`, keyed by file extension. v1 uses stdlib `go/parser` for the Go adapter (every tree-sitter Go binding we tried required CGO, which is incompatible with the current `CGO_ENABLED=0` + `scratch` image); the registry shape is otherwise tree-sitter-ready for the next language to plug in under a build tag.
 
 **Each new tool ships with at least one Detector implementation (usually Go, since it's our dominant path).** Other-language implementations land in subsequent PRs or stay at "not implemented for this language" until someone wires them.
 
@@ -111,7 +111,7 @@ Every tool / feature declares its runtime requirement. A feature whose binaries 
 | | Python | `pyright-langserver` or `pylsp` | `-python` |
 | | Node | `typescript-language-server` | `-node` |
 | | Rust | `rust-analyzer` | `-rust` |
-| AST edits ([#10](https://github.com/AltairaLabs/CodeGen-Sandbox/issues/10)) | any | (none — tree-sitter grammars linked into the sandbox binary) | No new runtime binaries |
+| AST edits ([#10](https://github.com/AltairaLabs/CodeGen-Sandbox/issues/10)) | Go (v1) | (none — stdlib `go/parser` + `go/ast` linked into the sandbox binary) | v1 ships Go only; the `internal/ast` registry leaves a slot for tree-sitter grammars to land under a build tag for Python / TS / Rust in a follow-up issue. See [AST-safe edit primitives](/tools/ast-edits/). |
 | Semantic search ([#11](https://github.com/AltairaLabs/CodeGen-Sandbox/issues/11)) | Go (v1) | (none — `go/ast` stdlib) | BM25 over Go symbols + docstrings; extensible per language via `internal/search/` extractor registry. Other languages follow when tree-sitter lands. |
 | Render tools ([#22](https://github.com/AltairaLabs/CodeGen-Sandbox/issues/22)) | any | `mmdc` (mermaid-cli), `dot` (graphviz) | `codegen-sandbox-tools-render` |
 | Next.js / framework scripts ([#25](https://github.com/AltairaLabs/CodeGen-Sandbox/issues/25)) | Node | `pnpm` / `yarn` / `bun` (as applicable) | `-node` (all three bundled) |
