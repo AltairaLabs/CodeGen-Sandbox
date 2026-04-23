@@ -74,8 +74,7 @@ The brain holds two purely-local tools; everything else is one MCP round-trip in
 | `run_tests` | sandbox | Project-type-detected. Returns structured output. |
 | `run_lint` | sandbox | Same. Used internally by `Edit` for the post-edit feedback contract. |
 | `run_typecheck` | sandbox | Same. |
-| `WebFetch` | sandbox | URL filter rejects RFC1918, link-local, cloud-metadata endpoints at MCP entry. |
-| `WebSearch` | sandbox | Backend-pluggable (Brave / Exa / Tavily). |
+| `WebFetch` / `WebSearch` | vendor MCP | Stateless network tools — no isolation gained from proxying them through this sandbox. Agent connects a vendor MCP server (Brave / Exa / Tavily / generic `fetch`) alongside this one. See `docs/concepts/non-sandbox-tools`. |
 
 The sandbox MCP server owns:
 - The trust boundary (path containment, command denylist, URL filter, secret scrub at MCP entry/exit).

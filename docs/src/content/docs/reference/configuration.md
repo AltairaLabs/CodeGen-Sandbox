@@ -18,12 +18,9 @@ codegen-sandbox -addr=<host:port> -workspace=<path>
 
 ## Environment variables
 
-| Variable | Used by | Effect |
-|---|---|---|
-| `CODEGEN_SANDBOX_SEARCH_BACKEND` | WebSearch | Selects the search backend: `brave`, `exa`, `tavily`. Unset disables WebSearch. |
-| `CODEGEN_SANDBOX_BRAVE_API_KEY` (etc.) | WebSearch | Backend-specific API key. |
+The sandbox itself has no required runtime env vars. It inherits the full environment from `docker run`, but none of the shipped tools (`Read` / `Edit` / `Bash` / etc.) consult env vars for behaviour. Web-search / fetch configuration happens on the sibling MCP server you wire in alongside — see [Non-sandbox tools](/concepts/non-sandbox-tools/).
 
-The sandbox inherits the full environment from `docker run`. [Secret scrubbing](/concepts/secret-scrubbing/) redacts well-known shapes from tool OUTPUT, but does not redact env vars themselves. Operators should only pass secrets that the agent is genuinely expected to use.
+[Secret scrubbing](/concepts/secret-scrubbing/) redacts well-known shapes from tool OUTPUT, but does not redact env vars themselves. Only pass secrets the agent is genuinely expected to consume via `Bash` (e.g. `GITHUB_TOKEN` for `gh` CLI calls).
 
 ## Docker run options
 
@@ -31,8 +28,6 @@ The sandbox inherits the full environment from `docker run`. [Secret scrubbing](
 docker run --rm -it \
   -p 8080:8080 \
   -v /host/workspace:/workspace \
-  -e CODEGEN_SANDBOX_SEARCH_BACKEND=brave \
-  -e CODEGEN_SANDBOX_BRAVE_API_KEY=... \
   codegen-sandbox:dev
 ```
 
@@ -53,7 +48,6 @@ All timeouts are per-tool-call, set by the caller via the tool's `timeout` param
 | run_tests | 300s | 1800s |
 | run_lint | 120s | 600s |
 | run_typecheck | 120s | 600s |
-| WebFetch | 30s | 120s |
 | Edit (post-edit lint) | 30s (hardcoded) | n/a |
 
 HTTP server-level timeouts:

@@ -2,7 +2,7 @@
 
 ## Project
 
-Docker-based MCP server that ships safe codegen tools (Read, Edit, Write, Glob, Grep, Bash, run_tests/lint/typecheck, WebFetch, WebSearch) for PromptKit agents. The brain (PromptKit agent) and hands (this sandbox) are separated by an MCP wire — PromptKit calls tools over MCP, this server executes them inside the container.
+Docker-based MCP server that ships safe codegen tools (Read, Edit, Write, Glob, Grep, Bash, run_tests/lint/typecheck) for PromptKit agents. WebFetch/WebSearch intentionally not included — agents connect vendor MCP servers (Brave / Exa / Tavily / official `fetch`) alongside this sandbox; see `docs/concepts/non-sandbox-tools`. The brain (PromptKit agent) and hands (this sandbox) are separated by an MCP wire — PromptKit calls tools over MCP, this server executes them inside the container.
 
 Spec: [docs/PROPOSAL.md](docs/PROPOSAL.md). Read it first.
 
@@ -46,7 +46,7 @@ Plans live in `docs/plans/` (not yet created). The series sketched in the prior 
 5. `codegen-sandbox-scrubbing.md` — secret scrub middleware
 6. `codegen-sandbox-docker.md` — Dockerfile + image build + CI publish
 7. `codegen-sandbox-bash-background.md` — background mode + BashOutput + KillShell
-8. `codegen-sandbox-web.md` — WebFetch + URL filter, WebSearch
+8. ~~`codegen-sandbox-web.md`~~ — dropped; WebFetch/WebSearch live in vendor MCP servers alongside this sandbox (see `docs/concepts/non-sandbox-tools`).
 
 A separate plan in PromptKit will cover the consumer side (sandbox provider, capability, skill).
 

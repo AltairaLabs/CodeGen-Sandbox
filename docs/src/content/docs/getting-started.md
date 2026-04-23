@@ -59,7 +59,7 @@ curl -sS -X POST "http://127.0.0.1:8080${SESSION}" \
   -d '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}'
 ```
 
-You'll get back 13 tool names: `Read`, `Write`, `Edit`, `Glob`, `Grep`, `Bash`, `BashOutput`, `KillShell`, `run_tests`, `run_lint`, `run_typecheck`, `WebFetch`, `WebSearch`.
+You'll get back 11 tool names: `Read`, `Write`, `Edit`, `Glob`, `Grep`, `Bash`, `BashOutput`, `KillShell`, `run_tests`, `run_lint`, `run_typecheck`. Web-search / fetch tools come from vendor MCP servers wired alongside — see [Non-sandbox tools](/concepts/non-sandbox-tools/).
 
 ## Next
 

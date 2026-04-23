@@ -42,7 +42,6 @@ internal/workspace/    Path containment + read tracker
 internal/server/       MCP server + scrubbing middleware
 internal/tools/        MCP tool handlers + shared exec helper
 internal/verify/       Project detection + lint parser
-internal/web/          URL filter for WebFetch
 internal/scrub/        Secret-pattern redaction
 docs/                  This Astro docs site
 Dockerfile             Multi-stage container image

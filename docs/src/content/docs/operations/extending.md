@@ -1,13 +1,13 @@
 ---
 title: Extending
-description: Adding a new tool, a new language detector, a new WebSearch backend, or a new scrub pattern.
+description: "Adding a new tool, a new language detector, or a new scrub pattern."
 ---
 
-The sandbox is deliberately modular so new capabilities land without surgery on existing code. Four common extensions:
+The sandbox is deliberately modular so new capabilities land without surgery on existing code. Three common extensions:
 
 ## Adding a new tool
 
-1. Create `internal/tools/my_tool.go`. Define `RegisterMyTool(s Registrar, deps *Deps)` and `HandleMyTool(deps *Deps) func(...)`.
+1. Create `internal/tools/my_tool.go`. Define `RegisterMyTool(s ToolAdder, deps *Deps)` and `HandleMyTool(deps *Deps) func(...)`.
 2. Add handler tests in `internal/tools/my_tool_test.go`. Follow the black-box pattern (`package tools_test`) and reuse the shared helpers `newTestDeps` / `textOf` declared in `read_test.go`.
 3. Register in `server.New`:
 
@@ -28,21 +28,6 @@ See the [Detector interface reference](/reference/detector-interface/) for the i
 4. If the linter output format differs from `<file>:<line>:<col>: <msg> (<rule>)`, either update `verify.ParseLint` (for a universal parser) or add a per-detector parser method.
 5. Add unit tests for the detector and an integration test for run_lint with a seeded project.
 
-## Adding a WebSearch backend
-
-`HandleWebSearch` currently reads `CODEGEN_SANDBOX_SEARCH_BACKEND` and returns a configuration error. To wire a real backend:
-
-1. Define a `SearchBackend` interface (e.g., `Search(ctx, query, limit) ([]SearchResult, error)`) in a new package `internal/search` (or inline in `web_search.go` — start small).
-2. Implement one backend (e.g., `braveBackend` calling `https://api.search.brave.com/res/v1/web/search`).
-3. In `HandleWebSearch`, dispatch on the env var:
-   - `brave` → construct `braveBackend` from `CODEGEN_SANDBOX_BRAVE_API_KEY`.
-   - `exa` / `tavily` → ditto.
-   - Unknown → current "not yet implemented" error.
-4. Add tests with an `httptest.Server` stub.
-5. Document the env vars in the [Configuration reference](/reference/configuration/).
-
-Don't hard-code API keys in the sandbox binary. Operators provide them at `docker run` time.
-
 ## Adding a scrub pattern
 
 1. Add an entry to the `patterns` slice in `internal/scrub/scrub.go`. **Order matters** — more specific patterns first (e.g., Anthropic's `sk-ant-` before OpenAI's generic `sk-`).
@@ -55,10 +40,6 @@ Target: common shapes (API keys from well-known providers, PEM private keys, bas
 
 Same shape as scrub patterns — regex only, fixed set. Edit `denyPattern` in `internal/tools/bash.go`. Add the token to the alternation (put specific variants before general ones, e.g. `mkfs.ext4` via an optional `.\w+` group). Add a test in `bash_internal_test.go`'s table of match cases.
 
-## Adding a URL-filter rule
+## A note on web tools
 
-`web.CheckURL` is a single function in `internal/web/filter.go`. To block a new range or hostname:
-
-- For an additional hostname, add it to the `blockedHostnames` map.
-- For an additional IP range, add a check in `checkIPv4` or `checkIPv6`. Go's `net.IP` has helpers for loopback / private / link-local / multicast; for custom CIDRs use `net.ParseCIDR` and `Contains`.
-- Add tests to `internal/web/filter_test.go`.
+WebSearch / WebFetch are not in this sandbox — agents connect a sibling MCP server (Brave / Exa / Tavily / the official `fetch` server) alongside. See [Non-sandbox tools](/concepts/non-sandbox-tools/). To control outbound behaviour, configure the agent runtime's MCP server list and/or your container runtime's egress policy.

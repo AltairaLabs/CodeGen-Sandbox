@@ -52,8 +52,12 @@ func New(ws *workspace.Workspace) (*Server, error) {
 	tools.RegisterRunTests(reg, deps)
 	tools.RegisterRunLint(reg, deps)
 	tools.RegisterRunTypecheck(reg, deps)
-	tools.RegisterWebFetch(reg, deps)
-	tools.RegisterWebSearch(reg, deps)
+	// Web tools (WebFetch / WebSearch) are NOT registered here. They are
+	// stateless and don't need the sandbox's filesystem or process
+	// namespace, so operators hook up vendor MCP servers alongside this
+	// sandbox (Brave / Exa / Tavily each publish their own; the MCP
+	// project ships a reference `fetch` server). See
+	// docs/concepts/non-sandbox-tools for the rationale.
 	return s, nil
 }
 
