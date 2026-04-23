@@ -34,7 +34,7 @@ Set on the sandbox binary:
 | Flag | Default | Description |
 |---|---|---|
 | `-api-addr` | `""` | Listen address for the human-facing API. Empty disables the listener entirely. |
-| `-enable-api` | `false` | Mounts read-only routes: `/api/tree`, `/api/file`, `/api/events`. |
+| `-enable-api` | `false` | Mounts read-only routes: `/api/tree`, `/api/file`, `/api/events`, `/api/download`. |
 | `-enable-exec` | `false` | Mounts `/api/exec` (WebSocket PTY) for browser-side terminals. |
 | `-enable-port-forward` | `false` | Mounts `/api/port-forward?port=N` (WebSocket raw TCP tunnel). Loopback-only targets. |
 | `-enable-ssh` | `false` | Starts the embedded SSH server on `127.0.0.1:0` and mounts `/api/ssh-authorized-keys` + `/api/ssh-port`. |
@@ -185,6 +185,17 @@ api ssh-authorized-keys sub=alice@example.com type=ssh-ed25519
 ```
 
 `sub` is always the OIDC subject from `X-Forwarded-Sub` (or `unknown` if somehow missing by the time the session closes). Pipe stderr into your normal log aggregator — these are standard `log.Printf` lines, not structured JSON.
+
+## Workspace download
+
+`GET /api/download` streams the workspace as a zip for developers who need to extract their session state (e.g. before the pod is torn down). Key properties:
+
+- **Streaming.** The archive is generated on the fly with `archive/zip` writing directly to the response body — no temp file, no in-memory buffering. A multi-GB workspace completes without affecting pod memory.
+- **Skips `.git/` and `node_modules/` at any depth.** These are machine-regenerable state; including them would bloat the archive by orders of magnitude with no recovery value. If you need the git state, run `git bundle` via `/api/exec` or an MCP Bash call first and download the bundle instead.
+- **Respects identity middleware.** Only callers the routing service authenticated reach this endpoint.
+- **No cap.** A runaway workspace will produce a huge download. The HTTP server has no `WriteTimeout` (to support SSE), so large downloads aren't prematurely cut off, but the caller's client or proxy may impose one.
+
+Filename: `workspace-<UTC-timestamp>.zip` via `Content-Disposition`. Content-Type: `application/zip`.
 
 ## Security invariants
 

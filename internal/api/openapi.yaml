@@ -217,6 +217,34 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/download:
+    get:
+      tags: [observability]
+      summary: Stream the workspace as a zip archive
+      description: |
+        Streams a zip of the workspace root as `application/zip` with a
+        `Content-Disposition: attachment; filename="workspace-<UTC-ts>.zip"`
+        header. The archive is generated on the fly — no temp file, no
+        in-memory buffering — so large workspaces complete without
+        pressuring the pod's memory.
+
+        Directories named `.git` or `node_modules` are skipped at any
+        depth (they're machine-regenerable state dominating any sensible
+        workspace by orders of magnitude).
+      operationId: downloadWorkspace
+      responses:
+        "200":
+          description: Workspace archive
+          content:
+            application/zip:
+              schema:
+                type: string
+                format: binary
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /api/exec:
     get:
       tags: [interactive]
