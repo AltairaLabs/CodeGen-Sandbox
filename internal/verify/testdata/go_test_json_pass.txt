@@ -1,0 +1,12 @@
+{"Time":"2026-04-23T19:53:18.956961+01:00","Action":"start","Package":"passing"}
+{"Time":"2026-04-23T19:53:19.305986+01:00","Action":"run","Package":"passing","Test":"TestFoo"}
+{"Time":"2026-04-23T19:53:19.306041+01:00","Action":"output","Package":"passing","Test":"TestFoo","Output":"=== RUN   TestFoo\n"}
+{"Time":"2026-04-23T19:53:19.306068+01:00","Action":"output","Package":"passing","Test":"TestFoo","Output":"--- PASS: TestFoo (0.00s)\n"}
+{"Time":"2026-04-23T19:53:19.30607+01:00","Action":"pass","Package":"passing","Test":"TestFoo","Elapsed":0}
+{"Time":"2026-04-23T19:53:19.306073+01:00","Action":"run","Package":"passing","Test":"TestBar"}
+{"Time":"2026-04-23T19:53:19.306074+01:00","Action":"output","Package":"passing","Test":"TestBar","Output":"=== RUN   TestBar\n"}
+{"Time":"2026-04-23T19:53:19.306075+01:00","Action":"output","Package":"passing","Test":"TestBar","Output":"--- PASS: TestBar (0.00s)\n"}
+{"Time":"2026-04-23T19:53:19.306076+01:00","Action":"pass","Package":"passing","Test":"TestBar","Elapsed":0}
+{"Time":"2026-04-23T19:53:19.306077+01:00","Action":"output","Package":"passing","Output":"PASS\n"}
+{"Time":"2026-04-23T19:53:19.306332+01:00","Action":"output","Package":"passing","Output":"ok  \tpassing\t0.349s\n"}
+{"Time":"2026-04-23T19:53:19.306346+01:00","Action":"pass","Package":"passing","Elapsed":0.349}

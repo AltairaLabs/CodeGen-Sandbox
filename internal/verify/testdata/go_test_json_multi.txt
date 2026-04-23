@@ -1,0 +1,22 @@
+{"Time":"2026-04-23T19:53:01.220844+01:00","Action":"start","Package":"multi/a"}
+{"Time":"2026-04-23T19:53:01.220918+01:00","Action":"start","Package":"multi/b"}
+{"Time":"2026-04-23T19:53:01.481711+01:00","Action":"run","Package":"multi/b","Test":"TestBFail"}
+{"Time":"2026-04-23T19:53:01.481743+01:00","Action":"output","Package":"multi/b","Test":"TestBFail","Output":"=== RUN   TestBFail\n"}
+{"Time":"2026-04-23T19:53:01.481754+01:00","Action":"output","Package":"multi/b","Test":"TestBFail","Output":"    b_test.go:6: boom from b\n"}
+{"Time":"2026-04-23T19:53:01.48177+01:00","Action":"output","Package":"multi/b","Test":"TestBFail","Output":"--- FAIL: TestBFail (0.00s)\n"}
+{"Time":"2026-04-23T19:53:01.481772+01:00","Action":"fail","Package":"multi/b","Test":"TestBFail","Elapsed":0}
+{"Time":"2026-04-23T19:53:01.481775+01:00","Action":"run","Package":"multi/b","Test":"TestBPass"}
+{"Time":"2026-04-23T19:53:01.481776+01:00","Action":"output","Package":"multi/b","Test":"TestBPass","Output":"=== RUN   TestBPass\n"}
+{"Time":"2026-04-23T19:53:01.48179+01:00","Action":"output","Package":"multi/b","Test":"TestBPass","Output":"--- PASS: TestBPass (0.00s)\n"}
+{"Time":"2026-04-23T19:53:01.481792+01:00","Action":"pass","Package":"multi/b","Test":"TestBPass","Elapsed":0}
+{"Time":"2026-04-23T19:53:01.481793+01:00","Action":"output","Package":"multi/b","Output":"FAIL\n"}
+{"Time":"2026-04-23T19:53:01.482084+01:00","Action":"output","Package":"multi/b","Output":"FAIL\tmulti/b\t0.261s\n"}
+{"Time":"2026-04-23T19:53:01.482096+01:00","Action":"fail","Package":"multi/b","Elapsed":0.261}
+{"Time":"2026-04-23T19:53:01.705916+01:00","Action":"run","Package":"multi/a","Test":"TestAFail"}
+{"Time":"2026-04-23T19:53:01.705946+01:00","Action":"output","Package":"multi/a","Test":"TestAFail","Output":"=== RUN   TestAFail\n"}
+{"Time":"2026-04-23T19:53:01.705975+01:00","Action":"output","Package":"multi/a","Test":"TestAFail","Output":"    a_test.go:6: boom from a\n"}
+{"Time":"2026-04-23T19:53:01.705982+01:00","Action":"output","Package":"multi/a","Test":"TestAFail","Output":"--- FAIL: TestAFail (0.00s)\n"}
+{"Time":"2026-04-23T19:53:01.705984+01:00","Action":"fail","Package":"multi/a","Test":"TestAFail","Elapsed":0}
+{"Time":"2026-04-23T19:53:01.705998+01:00","Action":"output","Package":"multi/a","Output":"FAIL\n"}
+{"Time":"2026-04-23T19:53:01.706369+01:00","Action":"output","Package":"multi/a","Output":"FAIL\tmulti/a\t0.485s\n"}
+{"Time":"2026-04-23T19:53:01.70638+01:00","Action":"fail","Package":"multi/a","Elapsed":0.486}

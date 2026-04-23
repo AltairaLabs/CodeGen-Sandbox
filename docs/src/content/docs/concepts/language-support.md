@@ -11,7 +11,7 @@ A `Detector` (`internal/verify/detector.go`) represents a project type that the 
 
 | Detector | Marker file | Lint | Test | Typecheck |
 |---|---|---|---|---|
-| Go | `go.mod` | `golangci-lint run ./...` | `go test ./...` | `go vet ./...` |
+| Go | `go.mod` | `golangci-lint run ./...` | `go test -json -count=1 ./...` | `go vet ./...` |
 | Node | `package.json` | `npx eslint .` (compact format) | `npm test --silent` | `npx tsc --noEmit` |
 | Python | `pyproject.toml` / `setup.py` | `ruff check` | `pytest` | *(none)* |
 | Rust | `Cargo.toml` | `cargo clippy --message-format=short` | `cargo test` | `cargo check` |
@@ -22,7 +22,7 @@ Every language-coupled tool — `run_lint`, `run_tests`, `run_typecheck`, post-e
 
 Extend the `Detector` interface with a method that captures the per-language behaviour. Examples from the current roadmap:
 
-- **Structured test failures** ([#12](https://github.com/AltairaLabs/CodeGen-Sandbox/issues/12)) — add `Detector.ParseTestFailures(stdout, stderr string) []TestFailure`, one implementation per language (go test `-json`, pytest `--tb`, jest `--json`, cargo test `--format json`).
+- **Structured test failures** ([#12](https://github.com/AltairaLabs/CodeGen-Sandbox/issues/12)) — `Detector.ParseTestFailures(stdout, stderr string) []TestFailure` is wired on every detector; Go ships the first implementation (test2json parser), other languages return nil until someone wires pytest `--tb`, jest `--json`, cargo test `--format json`.
 - **Post-edit format** ([#14](https://github.com/AltairaLabs/CodeGen-Sandbox/issues/14)) — add `Detector.FormatCheckCmd() []string` + `Detector.ParseFormatDiff(...) []FormatFinding`.
 - **Coverage** ([#16](https://github.com/AltairaLabs/CodeGen-Sandbox/issues/16)) — add `Detector.ParseCoverageProfile(path string) []CoverageEntry`.
 - **LSP navigation** ([#9](https://github.com/AltairaLabs/CodeGen-Sandbox/issues/9)) — language-server launch + teardown lives in `internal/lsp/<language>.go`, the Detector exposes only `LSPCommand() []string`.

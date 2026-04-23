@@ -1,0 +1,18 @@
+{"Time":"2026-04-23T19:53:00.800926+01:00","Action":"start","Package":"probe"}
+{"Time":"2026-04-23T19:53:00.97076+01:00","Action":"run","Package":"probe","Test":"TestValidate_Empty"}
+{"Time":"2026-04-23T19:53:00.970798+01:00","Action":"output","Package":"probe","Test":"TestValidate_Empty","Output":"=== RUN   TestValidate_Empty\n"}
+{"Time":"2026-04-23T19:53:00.970824+01:00","Action":"output","Package":"probe","Test":"TestValidate_Empty","Output":"    probe_test.go:7: expected error for empty input, got nil\n"}
+{"Time":"2026-04-23T19:53:00.970834+01:00","Action":"output","Package":"probe","Test":"TestValidate_Empty","Output":"--- FAIL: TestValidate_Empty (0.00s)\n"}
+{"Time":"2026-04-23T19:53:00.970837+01:00","Action":"fail","Package":"probe","Test":"TestValidate_Empty","Elapsed":0}
+{"Time":"2026-04-23T19:53:00.970844+01:00","Action":"run","Package":"probe","Test":"TestValidate_Good"}
+{"Time":"2026-04-23T19:53:00.970846+01:00","Action":"output","Package":"probe","Test":"TestValidate_Good","Output":"=== RUN   TestValidate_Good\n"}
+{"Time":"2026-04-23T19:53:00.970848+01:00","Action":"output","Package":"probe","Test":"TestValidate_Good","Output":"--- PASS: TestValidate_Good (0.00s)\n"}
+{"Time":"2026-04-23T19:53:00.970849+01:00","Action":"pass","Package":"probe","Test":"TestValidate_Good","Elapsed":0}
+{"Time":"2026-04-23T19:53:00.970851+01:00","Action":"run","Package":"probe","Test":"TestSkipped"}
+{"Time":"2026-04-23T19:53:00.970852+01:00","Action":"output","Package":"probe","Test":"TestSkipped","Output":"=== RUN   TestSkipped\n"}
+{"Time":"2026-04-23T19:53:00.97086+01:00","Action":"output","Package":"probe","Test":"TestSkipped","Output":"    probe_test.go:18: not yet\n"}
+{"Time":"2026-04-23T19:53:00.970862+01:00","Action":"output","Package":"probe","Test":"TestSkipped","Output":"--- SKIP: TestSkipped (0.00s)\n"}
+{"Time":"2026-04-23T19:53:00.970863+01:00","Action":"skip","Package":"probe","Test":"TestSkipped","Elapsed":0}
+{"Time":"2026-04-23T19:53:00.970864+01:00","Action":"output","Package":"probe","Output":"FAIL\n"}
+{"Time":"2026-04-23T19:53:00.971209+01:00","Action":"output","Package":"probe","Output":"FAIL\tprobe\t0.170s\n"}
+{"Time":"2026-04-23T19:53:00.971224+01:00","Action":"fail","Package":"probe","Elapsed":0.17}

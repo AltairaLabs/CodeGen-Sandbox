@@ -13,10 +13,15 @@ type Detector interface {
     TestCmd() []string      // argv for the test runner
     LintCmd() []string      // argv for the linter
     TypecheckCmd() []string // argv for the type checker
+
+    ParseLint(stdout, stderr string) []LintFinding
+    ParseTestFailures(stdout, stderr string) []TestFailure
 }
 
 func Detect(root string) Detector
 ```
+
+`ParseTestFailures` powers the [`last_test_failures`](/tools/last-test-failures/) tool. Detectors with no parser (v1: everyone except Go) return `nil` — the tool surfaces a clear "not supported for <language>" notice rather than silently claiming zero failures.
 
 `Detect` inspects the workspace root for marker files and returns the first matching detector, or `nil` if none are found. Only the immediate root is inspected; markers in subdirectories don't count (the workspace root is the authoritative anchor).
 
@@ -28,7 +33,7 @@ Marker: `go.mod` in the workspace root.
 type goDetector struct { root string }
 
 func (*goDetector) Language() string      { return "go" }
-func (*goDetector) TestCmd() []string      { return []string{"go", "test", "./..."} }
+func (*goDetector) TestCmd() []string      { return []string{"go", "test", "-json", "-count=1", "./..."} }
 func (*goDetector) LintCmd() []string      { return []string{"golangci-lint", "run", "./..."} }
 func (*goDetector) TypecheckCmd() []string { return []string{"go", "vet", "./..."} }
 ```
@@ -61,7 +66,7 @@ Today's exit-code convention assumption: exit 1 means "findings exist" (golangci
 
 | Language | Marker | Test | Lint | Typecheck |
 |---|---|---|---|---|
-| Go | `go.mod` | `go test ./...` | `golangci-lint run ./...` | `go vet ./...` |
+| Go | `go.mod` | `go test -json -count=1 ./...` | `golangci-lint run ./...` | `go vet ./...` |
 | Rust | `Cargo.toml` | `cargo test` | `cargo clippy --all-targets -- -D warnings` | `cargo check --all-targets` |
 | Node | `package.json` | `npm test --silent` | `npx --no-install eslint . --format=compact` | `npx --no-install tsc --noEmit` |
 | Python | `pyproject.toml` / `setup.py` | `pytest` | `ruff check .` | `mypy .` |

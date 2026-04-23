@@ -1,0 +1,11 @@
+{"Time":"2026-04-23T19:52:51.678077+01:00","Action":"start","Package":"probe2"}
+{"Time":"2026-04-23T19:52:51.826897+01:00","Action":"run","Package":"probe2","Test":"TestBaz"}
+{"Time":"2026-04-23T19:52:51.826939+01:00","Action":"output","Package":"probe2","Test":"TestBaz","Output":"=== RUN   TestBaz\n"}
+{"Time":"2026-04-23T19:52:51.826963+01:00","Action":"output","Package":"probe2","Test":"TestBaz","Output":"    a_test.go:9: mismatch\n"}
+{"Time":"2026-04-23T19:52:51.826965+01:00","Action":"output","Package":"probe2","Test":"TestBaz","Output":"        got: 5\n"}
+{"Time":"2026-04-23T19:52:51.826966+01:00","Action":"output","Package":"probe2","Test":"TestBaz","Output":"        want: 3\n"}
+{"Time":"2026-04-23T19:52:51.826973+01:00","Action":"output","Package":"probe2","Test":"TestBaz","Output":"--- FAIL: TestBaz (0.00s)\n"}
+{"Time":"2026-04-23T19:52:51.826975+01:00","Action":"fail","Package":"probe2","Test":"TestBaz","Elapsed":0}
+{"Time":"2026-04-23T19:52:51.826978+01:00","Action":"output","Package":"probe2","Output":"FAIL\n"}
+{"Time":"2026-04-23T19:52:51.827294+01:00","Action":"output","Package":"probe2","Output":"FAIL\tprobe2\t0.149s\n"}
+{"Time":"2026-04-23T19:52:51.827303+01:00","Action":"fail","Package":"probe2","Elapsed":0.149}

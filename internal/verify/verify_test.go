@@ -39,7 +39,7 @@ func TestGoDetector_Commands(t *testing.T) {
 
 	d := verify.Detect(dir)
 	require.NotNil(t, d)
-	assert.Equal(t, []string{"go", "test", "./..."}, d.TestCmd())
+	assert.Equal(t, []string{"go", "test", "-json", "-count=1", "./..."}, d.TestCmd())
 	assert.Equal(t, []string{"golangci-lint", "run", "./..."}, d.LintCmd())
 	assert.Equal(t, []string{"go", "vet", "./..."}, d.TypecheckCmd())
 }
