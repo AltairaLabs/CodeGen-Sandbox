@@ -46,7 +46,7 @@ func TestDetect_RustProject(t *testing.T) {
 	require.NotNil(t, d)
 	assert.Equal(t, "rust", d.Language())
 	assert.Equal(t, []string{"cargo", "test"}, d.TestCmd())
-	assert.Equal(t, []string{"cargo", "clippy", "--all-targets", "--", "-D", "warnings"}, d.LintCmd())
+	assert.Equal(t, []string{"cargo", "clippy", "--all-targets", "--message-format=short", "--", "-D", "warnings"}, d.LintCmd())
 	assert.Equal(t, []string{"cargo", "check", "--all-targets"}, d.TypecheckCmd())
 }
 
