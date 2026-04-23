@@ -32,6 +32,7 @@ func RegisterBash(s Registrar, deps *Deps) {
 		mcp.WithString("command", mcp.Required(), mcp.Description("Shell command to run.")),
 		mcp.WithString("description", mcp.Required(), mcp.Description("5-10 word description of what this command does. Recorded for agent context; does not affect execution.")),
 		mcp.WithNumber("timeout", mcp.Description(fmt.Sprintf("Timeout in seconds. Default %d, clamped to a maximum of %d.", defaultBashTimeoutSec, maxBashTimeoutSec))),
+		mcp.WithBoolean("run_in_background", mcp.Description("If true, spawn the command in the background and return a shell_id immediately. Use BashOutput to poll and KillShell to terminate.")),
 	)
 	s.AddTool(tool, HandleBash(deps))
 }
@@ -54,6 +55,10 @@ func HandleBash(deps *Deps) func(context.Context, mcp.CallToolRequest) (*mcp.Cal
 
 		if reason := denyReason(command); reason != "" {
 			return ErrorResult("command rejected: %s", reason), nil
+		}
+
+		if bg, _ := args["run_in_background"].(bool); bg {
+			return handleBashBackground(deps, command)
 		}
 
 		timeoutSec := defaultBashTimeoutSec
@@ -154,4 +159,81 @@ func denyReason(command string) string {
 		return fmt.Sprintf("command uses denylisted token %q", m[1])
 	}
 	return ""
+}
+
+// handleBashBackground launches command as a background shell, registers it
+// with deps.Shells, and returns the shell ID immediately. Goroutines drain
+// stdout/stderr into the shell's capped buffers and record the exit code
+// when the process finishes.
+func handleBashBackground(deps *Deps, command string) (*mcp.CallToolResult, error) {
+	if deps.Shells == nil {
+		return ErrorResult("background shells not configured"), nil
+	}
+	id := NewShellID()
+	sh := NewBackgroundShell(id, command)
+	deps.Shells.Register(sh)
+
+	cmd := exec.Command("bash", "-c", command)
+	cmd.Dir = deps.Workspace.Root()
+	cmd.Stdin = nil
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+
+	stdoutPipe, err := cmd.StdoutPipe()
+	if err != nil {
+		deps.Shells.Remove(id)
+		return ErrorResult("bash-bg stdout: %v", err), nil
+	}
+	stderrPipe, err := cmd.StderrPipe()
+	if err != nil {
+		deps.Shells.Remove(id)
+		return ErrorResult("bash-bg stderr: %v", err), nil
+	}
+
+	if err := cmd.Start(); err != nil {
+		deps.Shells.Remove(id)
+		return ErrorResult("bash-bg start: %v", err), nil
+	}
+	// After Setpgid + Start, the child's pid is also its process group id.
+	sh.SetPgid(cmd.Process.Pid)
+
+	go func() {
+		buf := make([]byte, 32*1024)
+		for {
+			n, err := stdoutPipe.Read(buf)
+			if n > 0 {
+				sh.AppendStdout(buf[:n])
+			}
+			if err != nil {
+				return
+			}
+		}
+	}()
+	go func() {
+		buf := make([]byte, 32*1024)
+		for {
+			n, err := stderrPipe.Read(buf)
+			if n > 0 {
+				sh.AppendStderr(buf[:n])
+			}
+			if err != nil {
+				return
+			}
+		}
+	}()
+
+	go func() {
+		waitErr := cmd.Wait()
+		code := 0
+		if waitErr != nil {
+			var exitErr *exec.ExitError
+			if errors.As(waitErr, &exitErr) {
+				code = exitErr.ExitCode()
+			} else {
+				code = -1
+			}
+		}
+		sh.SetExit(code)
+	}()
+
+	return TextResult(fmt.Sprintf("shell_id: %s\nstarted in background: %s\n", id, command)), nil
 }

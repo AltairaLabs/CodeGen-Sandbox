@@ -15,6 +15,9 @@ type Deps struct {
 	Workspace *workspace.Workspace
 	// Tracker records which files have been read in the current session.
 	Tracker *workspace.ReadTracker
+	// Shells hosts background bash shells for BashOutput and KillShell.
+	// May be nil in tests that don't exercise background mode.
+	Shells *ShellRegistry
 }
 
 // ErrorResult wraps a user-visible message as an MCP error result.
