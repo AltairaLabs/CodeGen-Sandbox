@@ -10,7 +10,7 @@ import (
 )
 
 // RegisterBashOutput registers the BashOutput tool.
-func RegisterBashOutput(s Registrar, deps *Deps) {
+func RegisterBashOutput(s ToolAdder, deps *Deps) {
 	tool := mcp.NewTool("BashOutput",
 		mcp.WithDescription("Return the current stdout, stderr, and status of a background shell started via Bash with run_in_background=true. Each call returns the FULL captured buffer (up to 1 MiB per stream); agents should grep client-side for specifics."),
 		mcp.WithString("shell_id", mcp.Required(), mcp.Description("Shell identifier returned by Bash in background mode.")),

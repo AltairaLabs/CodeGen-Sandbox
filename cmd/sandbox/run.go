@@ -83,6 +83,9 @@ func Run(ctx context.Context, addr, apiAddr, workspaceRoot string, devMode, enab
 		log.Printf("shutdown signal received; draining up to %ds", shutdownGraceSeconds)
 	}
 
+	// Deliberate detach: we only reach this branch because the caller's ctx
+	// already fired. Using ctx here would give http.Server.Shutdown a
+	// pre-cancelled context and collapse the grace window to zero.
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownGraceSeconds*time.Second)
 	defer cancel()
 

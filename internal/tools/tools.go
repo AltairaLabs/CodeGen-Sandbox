@@ -32,10 +32,10 @@ func TextResult(body string) *mcp.CallToolResult {
 	return mcp.NewToolResultText(body)
 }
 
-// Registrar is the subset of *mcpserver.MCPServer that Register* functions
+// ToolAdder is the subset of *mcpserver.MCPServer that Register* functions
 // need. Accepting an interface (rather than the concrete type) lets the
 // server package wrap handlers with middleware without touching each tool
 // registration individually.
-type Registrar interface {
+type ToolAdder interface {
 	AddTool(tool mcp.Tool, handler mcpserver.ToolHandlerFunc)
 }

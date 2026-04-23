@@ -28,7 +28,7 @@ func scrubMiddleware(handler mcpserver.ToolHandlerFunc) mcpserver.ToolHandlerFun
 	}
 }
 
-// scrubbingRegistrar implements tools.Registrar by forwarding AddTool to an
+// scrubbingRegistrar implements tools.ToolAdder by forwarding AddTool to an
 // underlying MCPServer, wrapping the handler with scrubMiddleware first.
 type scrubbingRegistrar struct {
 	inner *mcpserver.MCPServer

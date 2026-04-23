@@ -14,7 +14,7 @@ const (
 )
 
 // RegisterRunTypecheck registers the run_typecheck tool.
-func RegisterRunTypecheck(s Registrar, deps *Deps) {
+func RegisterRunTypecheck(s ToolAdder, deps *Deps) {
 	tool := mcp.NewTool("run_typecheck",
 		mcp.WithDescription("Run the project's type checker. Project type is detected from the workspace root (currently: Go via go.mod, uses `go vet`). Returns combined stdout+stderr plus a trailing 'exit: N' line."),
 		mcp.WithNumber("timeout", mcp.Description(fmt.Sprintf("Timeout in seconds. Default %d, clamped to a maximum of %d.", defaultRunTypecheckTimeoutSec, maxRunTypecheckTimeoutSec))),

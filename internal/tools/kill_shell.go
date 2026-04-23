@@ -8,7 +8,7 @@ import (
 )
 
 // RegisterKillShell registers the KillShell tool.
-func RegisterKillShell(s Registrar, deps *Deps) {
+func RegisterKillShell(s ToolAdder, deps *Deps) {
 	tool := mcp.NewTool("KillShell",
 		mcp.WithDescription("Kill a background shell started via Bash with run_in_background=true. Sends SIGKILL to the shell's process group (catches backgrounded children) and removes it from the registry. Subsequent BashOutput calls for the killed shell return 'unknown shell_id'."),
 		mcp.WithString("shell_id", mcp.Required(), mcp.Description("Shell identifier returned by Bash in background mode.")),
