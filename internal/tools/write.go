@@ -11,7 +11,7 @@ import (
 )
 
 // RegisterWrite registers the Write tool.
-func RegisterWrite(s Registrar, deps *Deps) {
+func RegisterWrite(s ToolAdder, deps *Deps) {
 	tool := mcp.NewTool("Write",
 		mcp.WithDescription("Write a file. Overwriting an existing file requires a prior Read."),
 		mcp.WithString("file_path", mcp.Required()),
@@ -25,13 +25,9 @@ func HandleWrite(deps *Deps) func(context.Context, mcp.CallToolRequest) (*mcp.Ca
 	return func(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		args, _ := req.Params.Arguments.(map[string]any)
 
-		filePath, _ := args["file_path"].(string)
-		if filePath == "" {
-			return ErrorResult("file_path is required"), nil
-		}
-		content, ok := args["content"].(string)
-		if !ok {
-			return ErrorResult("content is required"), nil
+		filePath, content, errRes := parseWriteArgs(args)
+		if errRes != nil {
+			return errRes, nil
 		}
 
 		abs, err := deps.Workspace.Resolve(filePath)
@@ -39,13 +35,8 @@ func HandleWrite(deps *Deps) func(context.Context, mcp.CallToolRequest) (*mcp.Ca
 			return ErrorResult("resolve path: %v", err), nil
 		}
 
-		if info, statErr := os.Stat(abs); statErr == nil {
-			if info.IsDir() {
-				return ErrorResult("path is a directory: %s", filePath), nil
-			}
-			if !deps.Tracker.HasBeenRead(abs) {
-				return ErrorResult("refusing to overwrite %s: Read it first", filePath), nil
-			}
+		if errRes := checkWriteTarget(deps, abs, filePath); errRes != nil {
+			return errRes, nil
 		}
 
 		if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
@@ -59,6 +50,32 @@ func HandleWrite(deps *Deps) func(context.Context, mcp.CallToolRequest) (*mcp.Ca
 		deps.Tracker.MarkRead(abs)
 		return TextResult(fmt.Sprintf("wrote %d bytes to %s", len(content), filePath)), nil
 	}
+}
+
+func parseWriteArgs(args map[string]any) (filePath, content string, errRes *mcp.CallToolResult) {
+	filePath, _ = args["file_path"].(string)
+	if filePath == "" {
+		return "", "", ErrorResult("file_path is required")
+	}
+	content, ok := args["content"].(string)
+	if !ok {
+		return "", "", ErrorResult("content is required")
+	}
+	return filePath, content, nil
+}
+
+func checkWriteTarget(deps *Deps, abs, filePath string) *mcp.CallToolResult {
+	info, err := os.Stat(abs)
+	if err != nil {
+		return nil
+	}
+	if info.IsDir() {
+		return ErrorResult("path is a directory: %s", filePath)
+	}
+	if !deps.Tracker.HasBeenRead(abs) {
+		return ErrorResult("refusing to overwrite %s: Read it first", filePath)
+	}
+	return nil
 }
 
 func atomicWrite(abs string, data []byte) (err error) {

@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os/exec"
 	"regexp"
 	"strings"
@@ -26,7 +27,7 @@ const (
 )
 
 // RegisterBash registers the Bash tool on the given MCP server.
-func RegisterBash(s Registrar, deps *Deps) {
+func RegisterBash(s ToolAdder, deps *Deps) {
 	tool := mcp.NewTool("Bash",
 		mcp.WithDescription("Run a shell command in the workspace via bash -c. Runs from the workspace root (use `cd subdir && ...` to move); stdin is closed; env is inherited from the server. Returns combined stdout+stderr, capped at 100 KiB with a '... (output truncated, N bytes elided)' marker — late output such as the last few lines of a build log may be elided. A trailing 'exit: N' line is emitted for non-zero exits. A 'timed out after Ns' marker is emitted on timeout (exit code 124), and the entire process group is killed so backgrounded children do not survive. A small set of dangerous tokens (sudo, su, shutdown, reboot, halt, poweroff, chroot, mount, umount, mkfs) at plausible command positions are rejected before the command runs."),
 		mcp.WithString("command", mcp.Required(), mcp.Description("Shell command to run.")),
@@ -42,95 +43,119 @@ func HandleBash(deps *Deps) func(context.Context, mcp.CallToolRequest) (*mcp.Cal
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		args, _ := req.Params.Arguments.(map[string]any)
 
-		command, _ := args["command"].(string)
-		if command == "" {
-			return ErrorResult("command is required"), nil
-		}
-		// description is required by the schema but has no execution effect;
-		// it exists so agent-context inspection of the MCP request log shows
-		// human-readable intent for each Bash call.
-		if desc, _ := args["description"].(string); desc == "" {
-			return ErrorResult("description is required"), nil
-		}
-
-		if reason := denyReason(command); reason != "" {
-			return ErrorResult("command rejected: %s", reason), nil
+		command, errRes := validateBashArgs(args)
+		if errRes != nil {
+			return errRes, nil
 		}
 
 		if bg, _ := args["run_in_background"].(bool); bg {
 			return handleBashBackground(deps, command)
 		}
 
-		timeoutSec := defaultBashTimeoutSec
-		if v, ok := args["timeout"].(float64); ok && int(v) > 0 {
-			timeoutSec = int(v)
-			if timeoutSec > maxBashTimeoutSec {
-				timeoutSec = maxBashTimeoutSec
-			}
-		}
-
+		timeoutSec := parseBashTimeout(args)
 		execCtx, cancel := context.WithTimeout(ctx, time.Duration(timeoutSec)*time.Second)
 		defer cancel()
 
-		cmd := exec.CommandContext(execCtx, "bash", "-c", command)
-		cmd.Dir = deps.Workspace.Root()
-		// Stdin = nil routes the child's stdin to /dev/null (per exec.Cmd
-		// docs); bash reads EOF immediately. Env is inherited — the container
-		// runtime is responsible for scrubbing secrets at launch.
-		cmd.Stdin = nil
-
-		// Put bash and all its descendants in a fresh process group, then
-		// kill the whole group on timeout. Without this, exec.CommandContext
-		// only SIGKILLs the direct child, so a command like `sleep 10 & wait`
-		// would outlive the timeout by keeping the wait-on-children pipe open.
-		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-		cmd.Cancel = func() error {
-			if cmd.Process != nil {
-				// Negative PID = process-group kill. Best-effort; swallow the
-				// error because by the time we get here the process may have
-				// exited on its own.
-				_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
-			}
-			return nil
-		}
-		// Give the group a short grace window to flush output after the
-		// SIGKILL; otherwise CombinedOutput can block on a still-open pipe.
-		cmd.WaitDelay = 2 * time.Second
-
+		cmd := newBashForegroundCmd(execCtx, deps.Workspace.Root(), command)
 		out, runErr := cmd.CombinedOutput()
 
 		timedOut := errors.Is(execCtx.Err(), context.DeadlineExceeded)
-		exitCode := 0
-		if runErr != nil {
-			var exitErr *exec.ExitError
-			// Check timedOut FIRST: a signal-killed process is itself an
-			// *exec.ExitError (with ExitCode -1), so matching on exitErr
-			// first would starve the timeout branch.
-			switch {
-			case timedOut:
-				exitCode = bashTimeoutExitCode
-			case errors.As(runErr, &exitErr):
-				exitCode = exitErr.ExitCode()
-			default:
-				return ErrorResult("bash: %v", runErr), nil
-			}
+		exitCode, errRes := bashExitCode(runErr, timedOut)
+		if errRes != nil {
+			return errRes, nil
 		}
-
-		body := truncateOutput(out, bashOutputCapBytes)
-
-		var sb strings.Builder
-		sb.Write(body)
-		if len(body) > 0 && !bytes.HasSuffix(body, []byte("\n")) {
-			sb.WriteByte('\n')
-		}
-		if timedOut {
-			fmt.Fprintf(&sb, "bash: timed out after %ds\n", timeoutSec)
-		}
-		if exitCode != 0 || timedOut {
-			fmt.Fprintf(&sb, "exit: %d\n", exitCode)
-		}
-		return TextResult(sb.String()), nil
+		return TextResult(formatBashOutput(out, exitCode, timedOut, timeoutSec)), nil
 	}
+}
+
+func validateBashArgs(args map[string]any) (string, *mcp.CallToolResult) {
+	command, _ := args["command"].(string)
+	if command == "" {
+		return "", ErrorResult("command is required")
+	}
+	// description is required by the schema but has no execution effect;
+	// it exists so agent-context inspection of the MCP request log shows
+	// human-readable intent for each Bash call.
+	if desc, _ := args["description"].(string); desc == "" {
+		return "", ErrorResult("description is required")
+	}
+	if reason := denyReason(command); reason != "" {
+		return "", ErrorResult("command rejected: %s", reason)
+	}
+	return command, nil
+}
+
+func parseBashTimeout(args map[string]any) int {
+	timeoutSec := defaultBashTimeoutSec
+	v, ok := args["timeout"].(float64)
+	if !ok || int(v) <= 0 {
+		return timeoutSec
+	}
+	timeoutSec = int(v)
+	if timeoutSec > maxBashTimeoutSec {
+		timeoutSec = maxBashTimeoutSec
+	}
+	return timeoutSec
+}
+
+func newBashForegroundCmd(ctx context.Context, dir, command string) *exec.Cmd {
+	cmd := exec.CommandContext(ctx, "bash", "-c", command)
+	cmd.Dir = dir
+	// Stdin = nil routes the child's stdin to /dev/null (per exec.Cmd
+	// docs); bash reads EOF immediately. Env is inherited — the container
+	// runtime is responsible for scrubbing secrets at launch.
+	cmd.Stdin = nil
+	// Put bash and all its descendants in a fresh process group, then
+	// kill the whole group on timeout. Without this, exec.CommandContext
+	// only SIGKILLs the direct child, so a command like `sleep 10 & wait`
+	// would outlive the timeout by keeping the wait-on-children pipe open.
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.Cancel = func() error {
+		if cmd.Process != nil {
+			// Negative PID = process-group kill. Best-effort; swallow the
+			// error because by the time we get here the process may have
+			// exited on its own.
+			_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		}
+		return nil
+	}
+	// Give the group a short grace window to flush output after the SIGKILL;
+	// otherwise CombinedOutput can block on a still-open pipe.
+	cmd.WaitDelay = 2 * time.Second
+	return cmd
+}
+
+func bashExitCode(runErr error, timedOut bool) (int, *mcp.CallToolResult) {
+	if runErr == nil {
+		return 0, nil
+	}
+	// Check timedOut FIRST: a signal-killed process is itself an
+	// *exec.ExitError (with ExitCode -1), so matching on exitErr first would
+	// starve the timeout branch.
+	if timedOut {
+		return bashTimeoutExitCode, nil
+	}
+	var exitErr *exec.ExitError
+	if errors.As(runErr, &exitErr) {
+		return exitErr.ExitCode(), nil
+	}
+	return 0, ErrorResult("bash: %v", runErr)
+}
+
+func formatBashOutput(out []byte, exitCode int, timedOut bool, timeoutSec int) string {
+	body := truncateOutput(out, bashOutputCapBytes)
+	var sb strings.Builder
+	sb.Write(body)
+	if len(body) > 0 && !bytes.HasSuffix(body, []byte("\n")) {
+		sb.WriteByte('\n')
+	}
+	if timedOut {
+		fmt.Fprintf(&sb, "bash: timed out after %ds\n", timeoutSec)
+	}
+	if exitCode != 0 || timedOut {
+		fmt.Fprintf(&sb, "exit: %d\n", exitCode)
+	}
+	return sb.String()
 }
 
 // truncateOutput caps b at limit bytes, appending a marker when truncated.
@@ -178,15 +203,10 @@ func handleBashBackground(deps *Deps, command string) (*mcp.CallToolResult, erro
 	cmd.Stdin = nil
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
-	stdoutPipe, err := cmd.StdoutPipe()
-	if err != nil {
+	stdoutPipe, stderrPipe, errRes := openBashPipes(cmd)
+	if errRes != nil {
 		deps.Shells.Remove(id)
-		return ErrorResult("bash-bg stdout: %v", err), nil
-	}
-	stderrPipe, err := cmd.StderrPipe()
-	if err != nil {
-		deps.Shells.Remove(id)
-		return ErrorResult("bash-bg stderr: %v", err), nil
+		return errRes, nil
 	}
 
 	if err := cmd.Start(); err != nil {
@@ -196,44 +216,46 @@ func handleBashBackground(deps *Deps, command string) (*mcp.CallToolResult, erro
 	// After Setpgid + Start, the child's pid is also its process group id.
 	sh.SetPgid(cmd.Process.Pid)
 
-	go func() {
-		buf := make([]byte, 32*1024)
-		for {
-			n, err := stdoutPipe.Read(buf)
-			if n > 0 {
-				sh.AppendStdout(buf[:n])
-			}
-			if err != nil {
-				return
-			}
-		}
-	}()
-	go func() {
-		buf := make([]byte, 32*1024)
-		for {
-			n, err := stderrPipe.Read(buf)
-			if n > 0 {
-				sh.AppendStderr(buf[:n])
-			}
-			if err != nil {
-				return
-			}
-		}
-	}()
-
-	go func() {
-		waitErr := cmd.Wait()
-		code := 0
-		if waitErr != nil {
-			var exitErr *exec.ExitError
-			if errors.As(waitErr, &exitErr) {
-				code = exitErr.ExitCode()
-			} else {
-				code = -1
-			}
-		}
-		sh.SetExit(code)
-	}()
+	go drainPipe(stdoutPipe, sh.AppendStdout)
+	go drainPipe(stderrPipe, sh.AppendStderr)
+	go func() { sh.SetExit(waitExitCode(cmd)) }()
 
 	return TextResult(fmt.Sprintf("shell_id: %s\nstarted in background: %s\n", id, command)), nil
+}
+
+func openBashPipes(cmd *exec.Cmd) (stdout, stderr io.Reader, errRes *mcp.CallToolResult) {
+	stdoutPipe, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, nil, ErrorResult("bash-bg stdout: %v", err)
+	}
+	stderrPipe, err := cmd.StderrPipe()
+	if err != nil {
+		return nil, nil, ErrorResult("bash-bg stderr: %v", err)
+	}
+	return stdoutPipe, stderrPipe, nil
+}
+
+func drainPipe(r io.Reader, appendFn func([]byte)) {
+	buf := make([]byte, 32*1024)
+	for {
+		n, err := r.Read(buf)
+		if n > 0 {
+			appendFn(buf[:n])
+		}
+		if err != nil {
+			return
+		}
+	}
+}
+
+func waitExitCode(cmd *exec.Cmd) int {
+	waitErr := cmd.Wait()
+	if waitErr == nil {
+		return 0
+	}
+	var exitErr *exec.ExitError
+	if errors.As(waitErr, &exitErr) {
+		return exitErr.ExitCode()
+	}
+	return -1
 }

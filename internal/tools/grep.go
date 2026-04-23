@@ -10,7 +10,7 @@ import (
 )
 
 // RegisterGrep registers the Grep tool on the given MCP server.
-func RegisterGrep(s Registrar, deps *Deps) {
+func RegisterGrep(s ToolAdder, deps *Deps) {
 	tool := mcp.NewTool("Grep",
 		mcp.WithDescription("Search file contents with a regex. ripgrep-backed; respects .gitignore. Returns matches in the requested output_mode."),
 		mcp.WithString("pattern", mcp.Required(), mcp.Description("Regex (Rust regex syntax).")),
@@ -33,43 +33,18 @@ func HandleGrep(deps *Deps) func(context.Context, mcp.CallToolRequest) (*mcp.Cal
 			return ErrorResult("pattern is required"), nil
 		}
 
-		mode := "content"
-		if v, ok := args["output_mode"].(string); ok && v != "" {
-			mode = v
+		rgArgs, errRes := buildGrepRgArgs(args, pattern)
+		if errRes != nil {
+			return errRes, nil
 		}
-		modeArgs, err := grepModeArgs(mode)
-		if err != nil {
-			return ErrorResult("%v", err), nil
-		}
-
-		rgArgs := []string{"--no-require-git", "--color=never"}
-		rgArgs = append(rgArgs, modeArgs...)
-
-		if v, _ := args["case_insensitive"].(bool); v {
-			rgArgs = append(rgArgs, "-i")
-		}
-		if glob, ok := args["glob"].(string); ok && glob != "" {
-			rgArgs = append(rgArgs, "-g", glob)
-		}
-
-		rgArgs = append(rgArgs, "--", pattern)
 
 		cwd := deps.Workspace.Root()
-		if pathArg, ok := args["path"].(string); ok && pathArg != "" {
-			abs, err := deps.Workspace.Resolve(pathArg)
-			if err != nil {
-				return ErrorResult("resolve path: %v", err), nil
-			}
-			if _, err := os.Stat(abs); err != nil {
-				return ErrorResult("stat path: %v", err), nil
-			}
-			rel, err := relToRoot(deps.Workspace.Root(), abs)
-			if err != nil {
-				return ErrorResult("relative path: %v", err), nil
-			}
-			if rel != "" {
-				rgArgs = append(rgArgs, rel)
-			}
+		scopeRel, errRes := resolveGrepScope(deps, args)
+		if errRes != nil {
+			return errRes, nil
+		}
+		if scopeRel != "" {
+			rgArgs = append(rgArgs, scopeRel)
 		}
 
 		out, err := runRipgrep(ctx, rgArgs, cwd)
@@ -83,6 +58,46 @@ func HandleGrep(deps *Deps) func(context.Context, mcp.CallToolRequest) (*mcp.Cal
 		}
 		return TextResult(body), nil
 	}
+}
+
+func buildGrepRgArgs(args map[string]any, pattern string) ([]string, *mcp.CallToolResult) {
+	mode := "content"
+	if v, ok := args["output_mode"].(string); ok && v != "" {
+		mode = v
+	}
+	modeArgs, err := grepModeArgs(mode)
+	if err != nil {
+		return nil, ErrorResult("%v", err)
+	}
+	rgArgs := []string{"--no-require-git", "--color=never"}
+	rgArgs = append(rgArgs, modeArgs...)
+	if v, _ := args["case_insensitive"].(bool); v {
+		rgArgs = append(rgArgs, "-i")
+	}
+	if glob, ok := args["glob"].(string); ok && glob != "" {
+		rgArgs = append(rgArgs, "-g", glob)
+	}
+	rgArgs = append(rgArgs, "--", pattern)
+	return rgArgs, nil
+}
+
+func resolveGrepScope(deps *Deps, args map[string]any) (string, *mcp.CallToolResult) {
+	pathArg, ok := args["path"].(string)
+	if !ok || pathArg == "" {
+		return "", nil
+	}
+	abs, err := deps.Workspace.Resolve(pathArg)
+	if err != nil {
+		return "", ErrorResult("resolve path: %v", err)
+	}
+	if _, err := os.Stat(abs); err != nil {
+		return "", ErrorResult("stat path: %v", err)
+	}
+	rel, err := relToRoot(deps.Workspace.Root(), abs)
+	if err != nil {
+		return "", ErrorResult("relative path: %v", err)
+	}
+	return rel, nil
 }
 
 func grepModeArgs(mode string) ([]string, error) {
