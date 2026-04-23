@@ -1,0 +1,64 @@
+---
+title: Codegen Sandbox
+description: A Docker-based MCP server shipping safe codegen tools for PromptKit agents.
+template: splash
+hero:
+  tagline: Safe, structured, containerised tools that let a PromptKit agent read, edit, and verify code — separated from the agent's runtime by an MCP wire.
+  actions:
+    - text: Getting Started
+      link: /getting-started/
+      icon: right-arrow
+      variant: primary
+    - text: Architecture
+      link: /architecture/
+      variant: minimal
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+## What it is
+
+The codegen sandbox is the **hands** of a PromptKit codegen agent. The agent (the **brain**) runs the model and holds context; the sandbox executes everything that touches a filesystem, spawns a process, or makes a network call. They talk over MCP (HTTP+SSE). Prompt injection or model error can corrupt the sandbox; it cannot corrupt the agent runtime or the host.
+
+## Tool surface
+
+<CardGrid stagger>
+  <Card title="Filesystem" icon="document">
+    **Read**, **Write**, **Edit** operate on a single workspace root. Every path is resolved and checked for containment before any I/O. Edit returns post-edit lint findings inline.
+  </Card>
+  <Card title="Search" icon="magnifier">
+    **Glob** (mtime-sorted, gitignore-aware) and **Grep** (ripgrep-backed) for fast navigation. Structured `file:line:rule: message` output on lint results.
+  </Card>
+  <Card title="Shell" icon="seti:bash">
+    **Bash** foreground + background (via `BashOutput` / `KillShell`). Per-call timeouts kill the whole process group; a small denylist catches footguns.
+  </Card>
+  <Card title="Verification" icon="approve-check">
+    **run_tests**, **run_lint**, **run_typecheck** use project-type detection (Go today; more languages behind the Detector interface) to run the right command.
+  </Card>
+  <Card title="Web" icon="rss">
+    **WebFetch** with an SSRF-defensive URL filter (private ranges, cloud metadata endpoints, non-http schemes all blocked). **WebSearch** backend-pluggable.
+  </Card>
+  <Card title="Safe by default" icon="shield">
+    Path containment, command denylist, secret scrubbing, URL filter — layered defence-in-depth. The Docker container is the real trust boundary.
+  </Card>
+</CardGrid>
+
+## How it fits
+
+The codegen sandbox is one **provider** behind PromptKit's agent — the piece that actually runs tool calls. PromptKit asks for "a sandbox"; the provider returns an MCP endpoint. The agent then calls tools over MCP; the sandbox executes them inside a container.
+
+```
+┌──────────────────┐         ┌────────────────────────────────────┐
+│  PromptKit agent │  MCP    │  Sandbox container (docker)        │
+│  (brain)         │ ──────► │  (hands)                           │
+│                  │         │                                    │
+│  runs model      │         │  - Read / Edit / Write             │
+│  holds context   │         │  - Glob / Grep                     │
+│  TodoWrite       │         │  - Bash (fg + bg)                  │
+│                  │         │  - run_tests / run_lint / ...      │
+│  no exec privs   │         │  - WebFetch / WebSearch            │
+│                  │         │  - workspace volume mounted        │
+└──────────────────┘         └────────────────────────────────────┘
+```
+
+[Next: Getting Started →](/getting-started/)

@@ -1,0 +1,7 @@
+/* Custom styling for codegen-sandbox docs. Most presentation comes from
+   starlight-theme-galaxy; overrides live here. */
+
+:root {
+  --sl-font-system-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo,
+    Consolas, "Liberation Mono", monospace;
+}
