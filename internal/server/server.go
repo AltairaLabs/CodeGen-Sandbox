@@ -9,6 +9,7 @@ import (
 	"github.com/altairalabs/codegen-sandbox/internal/metrics"
 	"github.com/altairalabs/codegen-sandbox/internal/secrets"
 	"github.com/altairalabs/codegen-sandbox/internal/tools"
+	"github.com/altairalabs/codegen-sandbox/internal/tracing"
 	"github.com/altairalabs/codegen-sandbox/internal/verify"
 	"github.com/altairalabs/codegen-sandbox/internal/workspace"
 	mcpserver "github.com/mark3labs/mcp-go/server"
@@ -20,6 +21,11 @@ type Config struct {
 	// (e.g. a k8s Secret volume). Empty string disables the file source;
 	// CODEGEN_SANDBOX_SECRET_* env vars still work.
 	SecretsDir string
+
+	// Tracer, when non-nil, is threaded into the observability middleware so
+	// every MCP tool invocation emits an OTel span. A nil Tracer is the
+	// no-op path — see internal/tracing for the nil-receiver contract.
+	Tracer *tracing.Tracer
 }
 
 // Server is the codegen sandbox MCP server.
@@ -56,10 +62,10 @@ func NewWithConfig(ws *workspace.Workspace, m *metrics.Metrics, cfg Config) (*Se
 	}
 	s.sse = mcpserver.NewSSEServer(mcpSrv)
 
-	// Every tool handler is wrapped with scrub + metrics middleware through
-	// the registrar. scrub must run before the result leaves the sandbox;
-	// metrics observes duration of the whole pipeline (scrub is cheap).
-	reg := &scrubbingMetricsRegistrar{inner: s.mcp, metrics: m, ws: s.ws}
+	// Every tool handler is wrapped with scrub + metrics + tracing middleware
+	// through the registrar. See observabilityRegistrar for the composition
+	// order rationale.
+	reg := &observabilityRegistrar{inner: s.mcp, metrics: m, tracer: cfg.Tracer, ws: s.ws}
 	deps := &tools.Deps{
 		Workspace:   s.ws,
 		Tracker:     s.tracker,

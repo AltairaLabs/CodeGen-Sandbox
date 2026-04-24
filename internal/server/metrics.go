@@ -6,6 +6,7 @@ import (
 
 	"github.com/altairalabs/codegen-sandbox/internal/metrics"
 	"github.com/altairalabs/codegen-sandbox/internal/scrub"
+	"github.com/altairalabs/codegen-sandbox/internal/tracing"
 	"github.com/altairalabs/codegen-sandbox/internal/verify"
 	"github.com/altairalabs/codegen-sandbox/internal/workspace"
 	"github.com/mark3labs/mcp-go/mcp"
@@ -57,23 +58,30 @@ func detectLanguage(ws *workspace.Workspace) string {
 	return d.Language()
 }
 
-// scrubbingMetricsRegistrar composes scrub + metrics middleware around every
-// AddTool call. The composition order matters: metrics wraps scrub, so we
-// record duration for the WHOLE handler including scrubbing (tiny, but still
-// the most defensible accounting).
-type scrubbingMetricsRegistrar struct {
+// observabilityRegistrar composes scrub + metrics + tracing middleware around
+// every AddTool call. The layering (innermost → outermost) is:
+//
+//  1. scrub — redact secrets before the result leaves the sandbox
+//  2. metrics — record duration + status of the scrubbed pipeline
+//  3. tracing — emit one span per invocation covering the WHOLE pipeline
+//
+// Tracing is outermost so the span's duration accounts for scrub + metrics
+// overhead; in practice both inner layers are microsecond-scale, but the
+// invariant is "what the span reports matches what the caller observed."
+type observabilityRegistrar struct {
 	inner   *mcpserver.MCPServer
 	metrics *metrics.Metrics
+	tracer  *tracing.Tracer
 	ws      *workspace.Workspace
 }
 
-// AddTool first wraps with scrubMiddleware so secrets are redacted, then with
-// the metrics wrapper. Concrete outer = metrics lets us measure total handler
-// time (including scrub overhead); in practice both are cheap.
-func (r *scrubbingMetricsRegistrar) AddTool(tool mcp.Tool, handler mcpserver.ToolHandlerFunc) {
+// AddTool wires the three-layer middleware chain. See observabilityRegistrar
+// for the composition order rationale.
+func (r *observabilityRegistrar) AddTool(tool mcp.Tool, handler mcpserver.ToolHandlerFunc) {
 	scrubbed := scrubbingHandler(handler, r.metrics)
 	instrumented := metricsMiddleware(r.metrics, tool.Name, r.ws, scrubbed)
-	r.inner.AddTool(tool, instrumented)
+	traced := tracingMiddleware(r.tracer, tool.Name, r.ws, instrumented)
+	r.inner.AddTool(tool, traced)
 }
 
 // scrubbingHandler replaces scrubMiddleware with a variant that also reports

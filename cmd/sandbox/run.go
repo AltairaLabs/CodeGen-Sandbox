@@ -13,6 +13,7 @@ import (
 	"github.com/altairalabs/codegen-sandbox/internal/api"
 	"github.com/altairalabs/codegen-sandbox/internal/metrics"
 	"github.com/altairalabs/codegen-sandbox/internal/server"
+	"github.com/altairalabs/codegen-sandbox/internal/tracing"
 	"github.com/altairalabs/codegen-sandbox/internal/workspace"
 )
 
@@ -41,6 +42,10 @@ type Config struct {
 	// SecretsDir enables the file source of the `secret` tool. See
 	// internal/secrets for the full contract.
 	SecretsDir string
+	// OTLPEndpoint, when set, enables OpenTelemetry tracing via the OTLP-HTTP
+	// exporter. Value is the standard OTEL_EXPORTER_OTLP_ENDPOINT URL
+	// (e.g. "http://otel-collector:4318"). Empty disables tracing entirely.
+	OTLPEndpoint string
 }
 
 // apiEnabled reports whether any human-facing API surface is requested.
@@ -61,8 +66,15 @@ func Run(ctx context.Context, cfg Config) error {
 	if err != nil {
 		return err
 	}
+	tracer, tracerShutdown, err := tracing.New(ctx, cfg.OTLPEndpoint)
+	if err != nil {
+		return fmt.Errorf("tracing: %w", err)
+	}
+	if tracer != nil {
+		log.Printf("codegen-sandbox tracing enabled (otlp endpoint=%s)", cfg.OTLPEndpoint)
+	}
 
-	listeners, closer, err := buildListeners(ws, cfg, metricsSurface)
+	listeners, closer, err := buildListeners(ws, cfg, metricsSurface, tracer)
 	if err != nil {
 		return err
 	}
@@ -78,7 +90,7 @@ func Run(ctx context.Context, cfg Config) error {
 	if err := waitForShutdown(ctx, errChans); err != nil {
 		return err
 	}
-	return shutdownAll(listeners.servers(), closer, errChans)
+	return shutdownAll(listeners.servers(), closer, errChans, tracerShutdown)
 }
 
 // listenerBundle groups the three optional listeners + the bound sandbox
@@ -109,8 +121,8 @@ func (l *listenerBundle) serve() []<-chan error {
 // buildListeners constructs every listener the Config asks for and logs
 // them. Packaging the construction here keeps Run's cognitive complexity
 // low.
-func buildListeners(ws *workspace.Workspace, cfg Config, m *metrics.Metrics) (*listenerBundle, io.Closer, error) {
-	mcpSrv, sandbox, err := buildMCPServer(cfg.Addr, ws, cfg, m)
+func buildListeners(ws *workspace.Workspace, cfg Config, m *metrics.Metrics, tracer *tracing.Tracer) (*listenerBundle, io.Closer, error) {
+	mcpSrv, sandbox, err := buildMCPServer(cfg.Addr, ws, cfg, m, tracer)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -144,8 +156,8 @@ func maybeBuildMetrics(cfg Config) (*metrics.Metrics, error) {
 	return m, nil
 }
 
-func buildMCPServer(addr string, ws *workspace.Workspace, cfg Config, m *metrics.Metrics) (*http.Server, *server.Server, error) {
-	srv, err := server.NewWithConfig(ws, m, server.Config{SecretsDir: cfg.SecretsDir})
+func buildMCPServer(addr string, ws *workspace.Workspace, cfg Config, m *metrics.Metrics, tracer *tracing.Tracer) (*http.Server, *server.Server, error) {
+	srv, err := server.NewWithConfig(ws, m, server.Config{SecretsDir: cfg.SecretsDir, Tracer: tracer})
 	if err != nil {
 		return nil, nil, fmt.Errorf("server: %w", err)
 	}
@@ -252,8 +264,10 @@ func waitForShutdown(ctx context.Context, errChans []<-chan error) error {
 }
 
 // shutdownAll drains every non-nil server and the optional API closer within
-// the shared grace window, then waits for the listen goroutines.
-func shutdownAll(servers []*http.Server, apiCloser io.Closer, errChans []<-chan error) error {
+// the shared grace window, then waits for the listen goroutines. A non-nil
+// tracerShutdown is called inside the same grace window so buffered spans
+// leave the batch-processor before the process exits.
+func shutdownAll(servers []*http.Server, apiCloser io.Closer, errChans []<-chan error, tracerShutdown tracing.ShutdownFunc) error {
 	// Deliberate detach: we only reach this branch because the caller's ctx
 	// already fired. Using ctx here would give http.Server.Shutdown a
 	// pre-cancelled context and collapse the grace window to zero.
@@ -272,6 +286,11 @@ func shutdownAll(servers []*http.Server, apiCloser io.Closer, errChans []<-chan 
 	if apiCloser != nil {
 		if err := apiCloser.Close(); err != nil && firstErr == nil {
 			firstErr = fmt.Errorf("api closer: %w", err)
+		}
+	}
+	if tracerShutdown != nil {
+		if err := tracerShutdown(shutdownCtx); err != nil && firstErr == nil {
+			firstErr = fmt.Errorf("tracer shutdown: %w", err)
 		}
 	}
 	for _, ch := range errChans {
