@@ -21,6 +21,7 @@ Run the test suite for the detected project type. Go today; future plans extend 
    - Caps each stream at 500 KiB with a `[TRUNCATED]` marker.
 4. Formats output: stdout first, then `--- stderr ---` section (if non-empty), then optional timeout marker, then `exit: N` (always).
 5. Parses the output through the detector's `ParseTestFailures` method and stores the result in a session-scoped slot. Retrieve it via [`last_test_failures`](/tools/last-test-failures/).
+6. For Go: augments the argv with `-coverprofile=<tempfile>`, then parses the resulting profile into the session coverage index for [`tests_covering`](/tools/tests-covering/) queries. The profile tempfile is removed after ingest. Other languages are unchanged.
 
 ## Example output
 
@@ -46,6 +47,7 @@ Agents who want the human-readable summary should call [`last_test_failures`](/t
 ## Related
 
 - [last_test_failures](/tools/last-test-failures/) — structured view of the most recent run's failures.
+- [tests_covering](/tools/tests-covering/) — queries the coverage index this tool populates.
 - [run_lint](/tools/run-lint/)
 - [run_typecheck](/tools/run-typecheck/)
 - [Detector interface](/reference/detector-interface/)
