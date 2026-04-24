@@ -245,7 +245,115 @@ The `--entrypoint` override is required because the final image targets `scratch
 
 ## `codegen-sandbox-tools-render`
 
-Coming soon — see [#26](https://github.com/AltairaLabs/CodeGen-Sandbox/issues/26). Will carry `mmdc` (mermaid-cli) + `dot` (graphviz) for the [render tools](https://github.com/AltairaLabs/CodeGen-Sandbox/issues/22). Because `mmdc` drags a Node + Chromium runtime closure, the expected shape is for operators to either run this image as a sibling render container or adopt it as their base.
+**Image**: `ghcr.io/altairalabs/codegen-sandbox-tools-render`
+
+**Size**: ~700 MB (chromium dominates; graphviz + mmdc + Node together add ~80 MB)
+
+**Binaries carried** (on `node:22-bookworm-slim`, **not** scratch):
+
+| Path | Purpose | Version |
+|---|---|---|
+| `/usr/bin/dot` | Graphviz layout engine — drives the render_dot tool ([#22](https://github.com/AltairaLabs/CodeGen-Sandbox/issues/22)) | Debian bookworm `graphviz` package |
+| `/usr/local/bin/mmdc` | Wrapper around the npm-installed `mmdc` that injects `-p /opt/render/puppeteer-config.json` so Chromium runs with `--no-sandbox` under root | `11.4.2` |
+| `/usr/local/bin/mmdc-direct` | The unwrapped npm-installed `mmdc`, for non-root invocations that should keep Chromium's default sandbox enabled | `11.4.2` |
+| `/usr/bin/chromium` | Headless browser mmdc drives via Puppeteer | Debian bookworm `chromium` package |
+| `/opt/render/puppeteer-config.json` | Pre-baked `--no-sandbox` puppeteer config consumed by the `/usr/local/bin/mmdc` wrapper | n/a |
+
+### Why this layer breaks the scratch + `COPY --from` pattern
+
+The other feature tools layers ship one or two static binaries on `scratch` so operators can `COPY --from=...` exactly the bits they want. The render layer can't fit that contract:
+
+- **`mmdc` is a Node.js script** that drives a real Chromium binary via Puppeteer to rasterise SVG. There is no single-binary distribution; bundling mermaid-cli + Node + Puppeteer + Chromium into a self-contained executable is a large lift that adds little value over shipping the runtime directly.
+- **`dot` from graphviz is dynamically linked** against ~10 `.so` files (`libgvc`, `libcgraph`, `libcdt`, `libxdot`, `libpathplan`, `libgvpr`, `libgd`, `libfontconfig`, `libexpat`, ...). Transplanting it into a scratch image would require dragging the whole library closure with it.
+
+So this layer is a **runnable image**, not an artifact image. Operators consume it in one of two shapes.
+
+### Operator shape 1 — sibling render container (recommended)
+
+Run the render image alongside the sandbox image, share the workspace via a volume, and have the agent shell out to `mmdc` / `dot` over `docker exec`. Keeps the agent's runtime image small and isolates Chromium from the agent process.
+
+```yaml
+# docker-compose.yml
+services:
+  sandbox:
+    image: ghcr.io/altairalabs/codegen-sandbox:latest
+    ports: ["8080:8080"]
+    volumes:
+      - workspace:/workspace
+  render:
+    image: ghcr.io/altairalabs/codegen-sandbox-tools-render:latest
+    # No ports — invoked by the sandbox via docker exec, not over HTTP.
+    volumes:
+      - workspace:/workspace
+    # Keep the container alive without occupying the entrypoint;
+    # docker exec is the only thing that runs commands inside it.
+    command: ["sleep", "infinity"]
+volumes:
+  workspace:
+```
+
+```bash
+# From the sandbox container, render via the sibling render container.
+docker exec render mmdc -i /workspace/diagram.mmd -o /workspace/diagram.svg
+docker exec render dot  -Tsvg /workspace/graph.dot   -o /workspace/graph.svg
+```
+
+### Operator shape 2 — adopt as base
+
+Use the render image as the `FROM` and copy the sandbox binary onto it. Single image, ~700 MB, no orchestration. Good for environments where running multiple containers is awkward.
+
+```dockerfile
+FROM ghcr.io/altairalabs/codegen-sandbox-tools-render:latest
+
+COPY --from=ghcr.io/altairalabs/codegen-sandbox-tools:latest /sandbox /usr/local/bin/sandbox
+COPY --from=ghcr.io/altairalabs/codegen-sandbox-tools:latest /rg      /usr/local/bin/rg
+
+WORKDIR /workspace
+EXPOSE 8080
+# Override the render image's dumb-init entrypoint with the sandbox.
+ENTRYPOINT ["/usr/local/bin/sandbox"]
+CMD ["-addr=:8080", "-workspace=/workspace"]
+```
+
+### `--no-sandbox` is pre-configured
+
+Chromium refuses to run as root without `--no-sandbox`, and containers run everything as root by default. The image solves this by:
+
+1. Shipping `/opt/render/puppeteer-config.json` with `--no-sandbox` + `--disable-setuid-sandbox` + `--disable-dev-shm-usage`.
+2. Replacing the npm-installed `/usr/local/bin/mmdc` shim with a small shell wrapper that always passes `-p /opt/render/puppeteer-config.json` to the real binary.
+
+So `mmdc -i diagram.mmd -o diagram.svg` "just works" in this image — no extra flags, no env vars to set. (Upstream Puppeteer / mermaid-cli have no `PUPPETEER_CONFIG` env var — the wrapper is the only way to bake this in.)
+
+If you adopt this image as a base and switch to a non-root user, drop the wrapper by calling `/usr/local/bin/mmdc-direct` directly, which lets Chromium use its default sandbox.
+
+### Verifying locally
+
+```bash
+docker buildx build -f Dockerfile.tools-render --load -t codegen-sandbox-tools-render:test .
+
+# Probe binaries without rendering anything.
+docker run --rm --entrypoint dot  codegen-sandbox-tools-render:test -V
+docker run --rm --entrypoint mmdc codegen-sandbox-tools-render:test --version
+
+# Real round-trip: render a tiny mermaid + dot graph to SVG.
+mkdir -p /tmp/render
+cat > /tmp/render/diagram.mmd <<'MMD'
+graph LR
+  A[client] --> B[sandbox] --> C[(workspace)]
+MMD
+cat > /tmp/render/graph.dot <<'DOT'
+digraph G { rankdir=LR; client -> sandbox -> workspace; }
+DOT
+docker run --rm -v /tmp/render:/work --entrypoint mmdc \
+  codegen-sandbox-tools-render:test -i /work/diagram.mmd -o /work/diagram.svg
+docker run --rm -v /tmp/render:/work --entrypoint dot \
+  codegen-sandbox-tools-render:test -Tsvg /work/graph.dot -o /work/graph.svg
+ls -lh /tmp/render/*.svg
+```
+
+### Not included (and why)
+
+- **PlantUML / d2 / structurizr-cli / asciidoctor** — orthogonal diagram dialects with their own runtime requirements (JVM, Go binary, Ruby). Keeping this layer scoped to the two formats motivated by [#22](https://github.com/AltairaLabs/CodeGen-Sandbox/issues/22) avoids a runtime-zoo image. Operators who want one of these can fork the Dockerfile and add it.
 
 ## Composing several layers
 

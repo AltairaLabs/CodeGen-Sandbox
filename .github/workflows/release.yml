@@ -25,6 +25,7 @@ env:
   TOOLS_NODE_IMAGE: ghcr.io/altairalabs/codegen-sandbox-tools-node
   TOOLS_PYTHON_IMAGE: ghcr.io/altairalabs/codegen-sandbox-tools-python
   TOOLS_RUST_IMAGE: ghcr.io/altairalabs/codegen-sandbox-tools-rust
+  TOOLS_RENDER_IMAGE: ghcr.io/altairalabs/codegen-sandbox-tools-render
   CONVENIENCE_IMAGE: ghcr.io/altairalabs/codegen-sandbox
 
 jobs:
@@ -119,6 +120,19 @@ jobs:
           tags: |
             ${{ env.TOOLS_RUST_IMAGE }}:${{ steps.tag.outputs.value }}
             ${{ env.TOOLS_RUST_IMAGE }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build + push tools-render image (multi-arch)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.tools-render
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ env.TOOLS_RENDER_IMAGE }}:${{ steps.tag.outputs.value }}
+            ${{ env.TOOLS_RENDER_IMAGE }}:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
