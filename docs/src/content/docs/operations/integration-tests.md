@@ -20,10 +20,13 @@ Files tagged `//go:build integration`. Drive the real external binaries the sand
 | Package | Binary | What it catches |
 | --- | --- | --- |
 | `internal/lsp/integration_test.go` | `gopls` | Mock-vs-real wire drift (the original implementation returned no rename edits because gopls uses `documentChanges` not `changes`; this tier caught it) |
+| `internal/lsp/rust_integration_test.go` | `rust-analyzer` | Same wire-drift class, in the rust-analyzer dialect (initialize quirks, references shape, rename shape) |
+| `internal/lsp/python_integration_test.go` | `pyright-langserver` | Same, in the pyright dialect |
+| `internal/lsp/node_integration_test.go` | `typescript-language-server` (+ `typescript`) | Same, in the tsserver dialect |
 | `internal/verify/integration_test.go` | `golangci-lint` | Lint-output format changes across linter versions |
 | `internal/verify/python_integration_test.go` | `ruff` | Same class of drift on `pythonDetector.ParseLint` (F-series format) |
 | `internal/verify/rust_integration_test.go` | `cargo clippy` (`--message-format=short`) | Same class of drift on `rustDetector.ParseLint` (severity-tagged one-liner format) |
-| `internal/verify/node_integration_test.go` | `eslint` (`--format=compact`) | Same class of drift on `nodeDetector.ParseLint` (eslint compact output) |
+| `internal/verify/node_integration_test.go` | `eslint` (`--format=json`) | Same class of drift on `nodeDetector.ParseLint` (eslint JSON output; the legacy `--format=compact` was removed from eslint v9 core) |
 | `internal/tools/integration_test.go` | `go` | Structured-failure parsing from live `go test -json` output |
 
 Run locally:
@@ -40,10 +43,13 @@ Binaries the tier needs on PATH:
 - `ruff` — `pip install ruff`
 - `cargo clippy` — `rustup component add clippy`
 - `eslint` — `npm i -g eslint`
+- `rust-analyzer` — `rustup component add rust-analyzer`
+- `pyright-langserver` — `npm i -g pyright` (or `pip install pyright`)
+- `typescript-language-server` — `npm i -g typescript-language-server typescript`
 
 Any missing binary **skips** the corresponding test with a clear message; it is not a failure. That keeps the target safe to run on a partially-provisioned machine while still being meaningful when every tool is present.
 
-CI runs this tier in a dedicated `integration` job that installs each binary fresh, so the non-Go detectors are fully exercised on every PR rather than depending on contributor toolchains.
+CI runs this tier in a dedicated `integration` job that installs each binary fresh, so every detector + LSP is fully exercised on every PR rather than depending on contributor toolchains.
 
 ## Tier 3 — End-to-end MCP wire (`scripts/e2e-p0.sh`)
 
