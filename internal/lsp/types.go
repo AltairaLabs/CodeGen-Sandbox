@@ -89,6 +89,25 @@ type lspTextEdit struct {
 	NewText string   `json:"newText"`
 }
 
+// lspWorkspaceEdit mirrors the on-wire shape. Servers may populate either
+// the legacy `changes` map or the newer `documentChanges` array (LSP 3.16+).
+// gopls 0.14+ returns `documentChanges` exclusively, so both forms must be
+// decoded; decodeWorkspaceEdit merges them into the normalised form.
 type lspWorkspaceEdit struct {
-	Changes map[string][]lspTextEdit `json:"changes"`
+	Changes         map[string][]lspTextEdit `json:"changes,omitempty"`
+	DocumentChanges []lspDocumentChange      `json:"documentChanges,omitempty"`
+}
+
+// lspDocumentChange is one entry in the `documentChanges` array. Only the
+// TextDocumentEdit variant is handled — CreateFile / RenameFile / DeleteFile
+// aren't part of rename responses.
+type lspDocumentChange struct {
+	TextDocument lspVersionedID `json:"textDocument"`
+	Edits        []lspTextEdit  `json:"edits"`
+}
+
+// lspVersionedID is the subset of VersionedTextDocumentIdentifier we need
+// — just the URI. Version is advisory and ignored.
+type lspVersionedID struct {
+	URI string `json:"uri"`
 }
