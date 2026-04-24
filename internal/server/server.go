@@ -104,6 +104,7 @@ func NewWithConfig(ws *workspace.Workspace, m *metrics.Metrics, cfg Config) (*Se
 	tools.RegisterASTEdits(reg, deps)
 	tools.RegisterLSPTools(reg, deps)
 	tools.RegisterSecrets(reg, deps)
+	tools.RegisterRender(reg, deps)
 	// Web tools (WebFetch / WebSearch) are NOT registered here. They are
 	// stateless and don't need the sandbox's filesystem or process
 	// namespace, so operators hook up vendor MCP servers alongside this
