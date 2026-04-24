@@ -92,3 +92,43 @@ func TestNewSingletonSet_UsesBasenameWhenEmpty(t *testing.T) {
 	assert.Equal(t, 1, set.Len())
 	assert.Equal(t, filepath.Base(ws.Root()), set.Names()[0])
 }
+
+// Nil-receiver behaviour is part of the contract — gauge loops and
+// other tools-package call sites pass *Set values that may be nil in
+// single-workspace embedders that haven't constructed one. Each method
+// returns a zero value rather than panicking.
+func TestSet_NilReceiverIsZeroValue(t *testing.T) {
+	var s *workspace.Set
+	assert.Equal(t, 0, s.Len())
+	assert.Nil(t, s.Names())
+	assert.Nil(t, s.SortedNames())
+	assert.Nil(t, s.Default())
+	assert.Nil(t, s.All())
+	_, err := s.Get("anything")
+	require.Error(t, err)
+}
+
+func TestSet_AllReturnsCopyInOrder(t *testing.T) {
+	a, b := t.TempDir(), t.TempDir()
+	set, err := workspace.NewSet([]workspace.Entry{
+		{Name: "zebra", Root: a},
+		{Name: "alpha", Root: b},
+	})
+	require.NoError(t, err)
+	all := set.All()
+	require.Len(t, all, 2)
+	assert.Equal(t, "zebra", all[0].Name())
+	assert.Equal(t, "alpha", all[1].Name())
+	// Mutating the returned slice must not affect the Set's internals.
+	all[0] = nil
+	assert.Equal(t, "zebra", set.All()[0].Name())
+}
+
+func TestSet_GetExistingReturnsWorkspace(t *testing.T) {
+	a := t.TempDir()
+	set, err := workspace.NewSet([]workspace.Entry{{Name: "primary", Root: a}})
+	require.NoError(t, err)
+	ws, err := set.Get("primary")
+	require.NoError(t, err)
+	assert.Equal(t, "primary", ws.Name())
+}
