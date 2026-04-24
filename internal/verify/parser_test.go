@@ -50,14 +50,20 @@ func TestPythonDetector_ParseLint_EmptyStdout(t *testing.T) {
 	assert.Empty(t, d.ParseLint("", ""))
 }
 
-// --------------- Node (eslint --format=compact) -----------------
+// --------------- Node (eslint --format=json) -----------------
 
-func TestNodeDetector_ParseLint_EslintCompact(t *testing.T) {
+func TestNodeDetector_ParseLint_EslintJSON(t *testing.T) {
 	d := detectorForMarker(t, "package.json")
 
-	stdout := "/app/src/index.js: line 5, col 3, Error - Missing semicolon (semi)\n" +
-		"/app/src/index.js: line 12, col 5, Warning - Unused variable 'x' (no-unused-vars)\n" +
-		"\n2 problems (1 error, 1 warning)\n" // summary line skipped
+	stdout := `[
+  {
+    "filePath": "/app/src/index.js",
+    "messages": [
+      {"ruleId":"semi","severity":2,"message":"Missing semicolon","line":5,"column":3},
+      {"ruleId":"no-unused-vars","severity":1,"message":"Unused variable 'x'","line":12,"column":5}
+    ]
+  }
+]`
 	findings := d.ParseLint(stdout, "")
 	require.Len(t, findings, 2)
 
@@ -71,14 +77,26 @@ func TestNodeDetector_ParseLint_EslintCompact(t *testing.T) {
 	assert.Contains(t, findings[1].Message, "Unused variable")
 }
 
-func TestNodeDetector_ParseLint_MessageWithParentheses(t *testing.T) {
+func TestNodeDetector_ParseLint_NonJSONIsEmpty(t *testing.T) {
 	d := detectorForMarker(t, "package.json")
+	// Non-JSON input (e.g. eslint v8 compact output, or a transport
+	// noise prefix) returns no findings rather than panicking. Operators
+	// who run an old eslint version see "no findings" — annoying but
+	// safe; the integration tier catches the version mismatch.
+	findings := d.ParseLint("/app/src/index.js: line 5, col 3, Error - Missing semicolon (semi)\n", "")
+	assert.Empty(t, findings)
+}
 
-	stdout := "a.js: line 1, col 1, Error - foo (bar) qux (semi)\n"
+func TestNodeDetector_ParseLint_MultipleFiles(t *testing.T) {
+	d := detectorForMarker(t, "package.json")
+	stdout := `[
+  {"filePath":"a.js","messages":[{"ruleId":"semi","severity":2,"message":"x","line":1,"column":1}]},
+  {"filePath":"b.js","messages":[{"ruleId":"no-var","severity":2,"message":"y","line":2,"column":2}]}
+]`
 	findings := d.ParseLint(stdout, "")
-	require.Len(t, findings, 1)
-	assert.Equal(t, "semi", findings[0].Rule, "non-greedy message must let the trailing (rule) win")
-	assert.Equal(t, "foo (bar) qux", findings[0].Message)
+	require.Len(t, findings, 2)
+	assert.Equal(t, "a.js", findings[0].File)
+	assert.Equal(t, "b.js", findings[1].File)
 }
 
 // --------------- Rust (cargo clippy --message-format=short) -----------------
