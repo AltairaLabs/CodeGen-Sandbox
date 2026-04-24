@@ -75,16 +75,19 @@ Runtime ~10s. Binaries needed: `go`, `bash`, `curl`, `jq`, `ripgrep` (Glob + Gre
 
 ## Tier 4 — Docker image smoke (CI only)
 
-The `docker-integration` CI job:
+One job per feature layer composes `Dockerfile.tools` + `Dockerfile.tools-<lang>` onto the layer's operator-recommended base, boots a container, opens the SSE stream, initialises an MCP session, and exercises the layer's characteristic tools.
 
-1. Builds both `Dockerfile.tools` and `Dockerfile.tools-go` locally via buildx.
-2. Composes them into an operator-style probe image: `golang:1.25-alpine` base, plus `sandbox` / `rg` / `gopls` / `golangci-lint` copied in.
-3. Boots a container, opens the SSE stream, initialises an MCP session, and issues `tools/list`.
-4. Asserts every P0 tool name is present in the response.
+| Job | Base | Feature-layer binaries | What it asserts via MCP |
+| --- | --- | --- | --- |
+| `docker-integration` | `golang:1.25-alpine` | `gopls`, `golangci-lint` | Every P0 tool name is present in `tools/list` |
+| `docker-integration-node` | `node:22-slim` | `pnpm`, `bun` | `run_tests` runs a `node --test` suite to exit 0; `Bash` sees pnpm + bun on PATH |
+| `docker-integration-python` | `python:3.12-slim` + `pytest` | `ruff` | `run_lint` surfaces a seeded F401 finding via MCP; `run_tests` runs pytest to exit 0 |
+| `docker-integration-rust` | `rust:1-slim-bookworm` + `clippy` | `rust-analyzer` | `run_tests` passes `cargo test`; `run_lint` surfaces `cargo clippy` output |
+| `docker-integration-render` | `tools-render` base (debian + dot + mmdc + Chromium) | — | `render_mermaid` + `render_dot` each write an SVG with an `<svg` root to the workspace volume |
 
-This is the only tier that verifies **the published image actually boots and registers its tool surface**. If this goes red, no other test tier's green matters — the operators can't run the thing.
+This is the only tier that verifies **the published image actually boots and registers its tool surface**. If any of these go red, no other test tier's green matters — the operators can't run the thing.
 
-See [#58](https://github.com/AltairaLabs/CodeGen-Sandbox/issues/58) for the planned extension to every feature layer (`-node` / `-python` / `-rust` / `-render`).
+The MCP handshake + `tools/call` boilerplate is factored into `scripts/mcp-helpers.sh` so each job's inline bash stays focused on the seed + assertions.
 
 ## When to run what
 
