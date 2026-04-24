@@ -76,7 +76,63 @@ The `--entrypoint` override is required because the final image targets `scratch
 
 ## `codegen-sandbox-tools-node`
 
-Coming soon — see [#26](https://github.com/AltairaLabs/CodeGen-Sandbox/issues/26). Will carry `pnpm`, `bun`, `yarn`, `typescript-language-server`, `prettier` on a Node-based image (because the JS-backed tools need a Node runtime at execute time).
+**Image**: `ghcr.io/altairalabs/codegen-sandbox-tools-node`
+
+**Size**: ~60 MB (both binaries are statically linked native executables)
+
+**Binaries carried**:
+
+| Path | Purpose | Version |
+|---|---|---|
+| `/pnpm` | pnpm package manager — driven by Node package-manager detection ([#25](https://github.com/AltairaLabs/CodeGen-Sandbox/issues/25)) | `v9.15.0` |
+| `/bun` | bun runtime + package manager — same | `1.1.38` |
+
+Both are native per-arch binaries shipped by their upstream projects (pnpm as `pnpm-linux-<arch>`; bun as a per-arch zip).
+
+**Glibc required on the consumer base image.** Upstream pnpm and bun release artifacts are dynamically linked against glibc — they will fail with "not found" on an alpine / musl base. Compose this layer onto a glibc base such as `node:22-slim`, `node:22` (Debian), `debian:bookworm-slim`, or `ubuntu:24.04`.
+
+### Not included (and why)
+
+- **yarn** — yarn classic (v1) is a Node.js script, and yarn berry (v2+) ships per-project under `.yarn/releases/yarn-*.cjs`. Neither fits the scratch-image "one static binary" contract. Operators who need yarn should enable [corepack](https://nodejs.org/api/corepack.html) in their own base image — it ships with Node.js 16+ and transparently dispatches to `pnpm` / `yarn` / `npm`.
+- **`typescript-language-server`** and **`prettier`** — both are pure Node.js packages that need a runtime at execute time. Single-file bundling via `pkg` / `@vercel/ncc` / `bun build --compile` is a separate lift and is deferred to a follow-up image bump. Until they land, install them at build time with `npm i -g typescript typescript-language-server prettier` on top of a Node base image.
+
+### Operator composition
+
+```dockerfile
+# node:22-slim is glibc (Debian). Do NOT use node:22-alpine — pnpm and bun
+# are dynamically linked against glibc and will fail on musl.
+FROM node:22-slim
+
+# Core sandbox tools.
+COPY --from=ghcr.io/altairalabs/codegen-sandbox-tools:latest       /sandbox  /usr/local/bin/sandbox
+COPY --from=ghcr.io/altairalabs/codegen-sandbox-tools:latest       /rg       /usr/local/bin/rg
+
+# Node feature layer.
+COPY --from=ghcr.io/altairalabs/codegen-sandbox-tools-node:latest  /pnpm     /usr/local/bin/pnpm
+COPY --from=ghcr.io/altairalabs/codegen-sandbox-tools-node:latest  /bun      /usr/local/bin/bun
+
+WORKDIR /workspace
+EXPOSE 8080
+ENTRYPOINT ["/usr/local/bin/sandbox"]
+CMD ["-addr=:8080", "-workspace=/workspace"]
+```
+
+Copy only what the features you enable will use — if your agent only ever calls `pnpm install`, `/bun` is dead weight.
+
+### Verifying locally
+
+```bash
+docker buildx build -f Dockerfile.tools-node --load -t codegen-sandbox-tools-node:test .
+
+docker create --name probe --entrypoint /pnpm codegen-sandbox-tools-node:test
+docker cp probe:/pnpm /tmp/pnpm && docker cp probe:/bun /tmp/bun
+docker rm probe
+
+docker run --rm --entrypoint /pnpm codegen-sandbox-tools-node:test --version
+docker run --rm --entrypoint /bun  codegen-sandbox-tools-node:test --version
+```
+
+The `--entrypoint` override is required because the final image targets `scratch` with no default CMD / ENTRYPOINT.
 
 ## `codegen-sandbox-tools-python`
 
@@ -95,7 +151,8 @@ Coming soon — see [#26](https://github.com/AltairaLabs/CodeGen-Sandbox/issues/
 Layers are independent artifacts; operators freely mix them:
 
 ```dockerfile
-FROM node:22-alpine
+# Use a glibc Node base — pnpm and bun are dynamically linked against glibc.
+FROM node:22-slim
 
 COPY --from=ghcr.io/altairalabs/codegen-sandbox-tools:latest      /sandbox /usr/local/bin/
 COPY --from=ghcr.io/altairalabs/codegen-sandbox-tools:latest      /rg      /usr/local/bin/

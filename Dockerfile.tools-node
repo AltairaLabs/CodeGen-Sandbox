@@ -1,0 +1,101 @@
+# syntax=docker/dockerfile:1.7
+#
+# codegen-sandbox-tools-node — feature tools layer carrying Node-ecosystem
+# package managers that sandbox features consume on PATH.
+#
+# Contents (on `scratch`):
+#   /pnpm  — pnpm package manager (native binary)
+#   /bun   — bun runtime + package manager (native binary)
+#
+# IMPORTANT — glibc required on the consumer base image. Both upstream
+# binaries are dynamically linked against glibc (the upstream pnpm and bun
+# release artifacts are NOT musl builds). They will fail with "not found"
+# on an alpine / musl base. Operators should compose this layer onto a
+# glibc base such as `node:22-slim`, `debian:bookworm-slim`, `ubuntu:24.04`,
+# or `node:22` (Debian-based).
+#
+# Operator composition:
+#
+#   FROM node:22-slim
+#   COPY --from=ghcr.io/altairalabs/codegen-sandbox-tools:latest       /sandbox  /usr/local/bin/
+#   COPY --from=ghcr.io/altairalabs/codegen-sandbox-tools:latest       /rg       /usr/local/bin/
+#   COPY --from=ghcr.io/altairalabs/codegen-sandbox-tools-node:latest  /pnpm     /usr/local/bin/
+#   COPY --from=ghcr.io/altairalabs/codegen-sandbox-tools-node:latest  /bun      /usr/local/bin/
+#
+# Intentionally NOT shipped from this layer:
+#
+#   * yarn — yarn classic (v1) is a Node.js script, and yarn berry (v2+)
+#     ships per-project under `.yarn/releases/yarn-*.cjs`. Neither fits
+#     the scratch-image "one static binary" contract. Operators who need
+#     yarn should enable `corepack` in their own base image (it ships
+#     with Node.js 16+ and transparently dispatches to pnpm/yarn/npm).
+#
+#   * typescript-language-server — pure Node.js package; requires a Node
+#     runtime at execute time. Single-file bundling via `pkg` / `ncc` /
+#     `bun build --compile` is a separate lift and is deferred to a
+#     follow-up PR. Until then, operators can install it at build time
+#     with `npm i -g typescript typescript-language-server` on top of
+#     their Node base.
+#
+#   * prettier — same story as typescript-language-server: pure Node.js,
+#     needs bundling to fit the scratch-layer contract. Deferred.
+#
+# See https://github.com/AltairaLabs/CodeGen-Sandbox/issues/26 for the
+# full feature-layers roadmap.
+
+# -------- pnpm fetcher --------
+# pnpm publishes a per-arch native binary on GitHub releases as
+# `pnpm-linux-<arch>` (direct binary, no archive). It is dynamically linked
+# against glibc, so we fetch on a glibc base (debian-slim) where the
+# `--version` sanity check can actually execute. The binary is then
+# transplanted as-is into the scratch final stage.
+FROM debian:bookworm-slim AS pnpm-fetcher
+
+ARG PNPM_VERSION=v9.15.0
+ARG TARGETARCH
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && case "${TARGETARCH}" in \
+         amd64) PNPM_ARCH="x64" ;; \
+         arm64) PNPM_ARCH="arm64" ;; \
+         *)     echo "unsupported arch: ${TARGETARCH}"; exit 1 ;; \
+       esac \
+    && mkdir -p /out \
+    && curl -sSfL -o /out/pnpm \
+         "https://github.com/pnpm/pnpm/releases/download/${PNPM_VERSION}/pnpm-linux-${PNPM_ARCH}" \
+    && chmod +x /out/pnpm \
+    && /out/pnpm --version
+
+# -------- bun fetcher --------
+# bun ships a per-arch zip containing `bun-linux-<arch>/bun`, dynamically
+# linked against glibc — so we fetch on debian-slim for the same reason
+# as pnpm above. Arch-name mapping is bun-specific (`aarch64`, not `arm64`).
+FROM debian:bookworm-slim AS bun-fetcher
+
+ARG BUN_VERSION=1.1.38
+ARG TARGETARCH
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl ca-certificates unzip \
+    && rm -rf /var/lib/apt/lists/* \
+    && case "${TARGETARCH}" in \
+         amd64) BUN_ARCH="x64" ;; \
+         arm64) BUN_ARCH="aarch64" ;; \
+         *)     echo "unsupported arch: ${TARGETARCH}"; exit 1 ;; \
+       esac \
+    && mkdir -p /out /tmp/bun \
+    && curl -sSfL -o /tmp/bun.zip \
+         "https://github.com/oven-sh/bun/releases/download/bun-v${BUN_VERSION}/bun-linux-${BUN_ARCH}.zip" \
+    && unzip -q /tmp/bun.zip -d /tmp/bun \
+    && install -m 0755 "/tmp/bun/bun-linux-${BUN_ARCH}/bun" /out/bun \
+    && /out/bun --version
+
+# -------- Final: scratch + two native binaries --------
+FROM scratch
+
+COPY --from=pnpm-fetcher /out/pnpm /pnpm
+COPY --from=bun-fetcher  /out/bun  /bun
+
+# No ENTRYPOINT or CMD — artifact source, not a runtime image.
