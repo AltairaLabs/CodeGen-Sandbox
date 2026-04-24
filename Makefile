@@ -1,4 +1,4 @@
-.PHONY: build build-forward test lint fmt tidy \
+.PHONY: build build-forward test test-integration lint fmt tidy \
         docker-build-tools docker-build docker-run docker-clean \
         docker-build-python docker-build-node docker-build-rust
 
@@ -15,6 +15,13 @@ build-forward:
 
 test:
 	go test ./...
+
+# Run integration tests that drive real external binaries (gopls,
+# golangci-lint, go). Tests gated by `//go:build integration` skip at
+# runtime when their binary isn't on PATH, so this target is safe to run
+# on a machine that only has a subset of them installed.
+test-integration:
+	go test -tags=integration -race -count=1 -timeout=120s ./...
 
 lint:
 	golangci-lint run ./...

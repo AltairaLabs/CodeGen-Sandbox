@@ -219,3 +219,151 @@ jobs:
           ls -lh /tmp/gopls /tmp/golangci-lint
           /tmp/gopls version
           /tmp/golangci-lint --version
+
+  integration:
+    name: Integration tests (real gopls + golangci-lint)
+    runs-on: ubuntu-latest
+    needs: go
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Install gopls
+        run: go install golang.org/x/tools/gopls@latest
+
+      - name: Install golangci-lint
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh \
+            | sh -s -- -b "$(go env GOPATH)/bin" ${{ env.GOLANGCI_LINT_VERSION }}
+
+      - name: Verify integration toolchain
+        run: |
+          go version
+          gopls version
+          golangci-lint --version
+
+      - name: Run integration suite
+        run: make test-integration
+
+  docker-integration:
+    name: Docker image full-stack smoke
+    runs-on: ubuntu-latest
+    needs: [docker-tools, docker-tools-go]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build tools image (for compose)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.tools
+          push: false
+          load: true
+          tags: codegen-sandbox-tools:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build tools-go image (for compose)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.tools-go
+          push: false
+          load: true
+          tags: codegen-sandbox-tools-go:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Compose operator-style probe image
+        run: |
+          set -euo pipefail
+          cat > Dockerfile.integration-probe <<'DOCKERFILE'
+          FROM golang:1.25-alpine
+          RUN apk add --no-cache bash git
+          COPY --from=codegen-sandbox-tools:ci       /sandbox       /usr/local/bin/
+          COPY --from=codegen-sandbox-tools:ci       /rg            /usr/local/bin/
+          COPY --from=codegen-sandbox-tools-go:ci    /gopls         /usr/local/bin/
+          COPY --from=codegen-sandbox-tools-go:ci    /golangci-lint /usr/local/bin/
+          WORKDIR /workspace
+          ENTRYPOINT ["/usr/local/bin/sandbox"]
+          DOCKERFILE
+          docker build -f Dockerfile.integration-probe -t codegen-sandbox-probe:ci .
+
+      - name: Boot sandbox from probe image + assert tools/list
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/probe-ws
+          docker run -d --rm \
+            --name codegen-probe \
+            -p 127.0.0.1:18090:8080 \
+            -v /tmp/probe-ws:/workspace \
+            codegen-sandbox-probe:ci \
+              -addr=0.0.0.0:8080 -workspace=/workspace
+          trap 'docker stop codegen-probe 2>/dev/null || true' EXIT
+
+          # Wait for listen
+          for i in $(seq 1 20); do
+            if curl -sS -o /dev/null --max-time 1 http://127.0.0.1:18090/sse; then
+              break
+            fi
+            sleep 1
+          done
+
+          # Open SSE + capture the session endpoint
+          SSE_FILE=$(mktemp)
+          curl -sS -N --max-time 10 --output "$SSE_FILE" http://127.0.0.1:18090/sse &
+          SSE_PID=$!
+          for i in $(seq 1 30); do
+            if grep -q '^data: /message' "$SSE_FILE"; then break; fi
+            sleep 0.3
+          done
+          SESSION=$(grep -o '^data: /message.*' "$SSE_FILE" | head -1 \
+                    | sed 's|^data: *||' | tr -d '\r\n ')
+          test -n "$SESSION" || { tail -40 "$SSE_FILE" >&2; exit 1; }
+
+          # Initialize
+          curl -sS -X POST "http://127.0.0.1:18090$SESSION" \
+            -H 'Content-Type: application/json' \
+            -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","clientInfo":{"name":"docker-integration","version":"0"},"capabilities":{}}}' \
+            >/dev/null
+          curl -sS -X POST "http://127.0.0.1:18090$SESSION" \
+            -H 'Content-Type: application/json' \
+            -d '{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}' \
+            >/dev/null
+
+          # tools/list — assert the P0 tools are registered
+          curl -sS -X POST "http://127.0.0.1:18090$SESSION" \
+            -H 'Content-Type: application/json' \
+            -d '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' \
+            >/dev/null
+
+          # Wait for the response to land in the SSE stream
+          for i in $(seq 1 40); do
+            if grep -q '"id":2,' "$SSE_FILE"; then break; fi
+            sleep 0.3
+          done
+          RESP=$(grep -o '^data: {"jsonrpc":"2.0","id":2,.*' "$SSE_FILE" | tail -1 | sed 's|^data: *||')
+          test -n "$RESP" || { tail -40 "$SSE_FILE" >&2; exit 1; }
+
+          echo "$RESP" | head -c 2000
+          echo
+
+          # Every P0 tool must be present in the list.
+          for t in snapshot_create snapshot_list snapshot_restore snapshot_diff \
+                   last_test_failures search_code edit_function_body \
+                   insert_after_method change_function_signature \
+                   find_definition find_references rename_symbol; do
+            if ! echo "$RESP" | grep -q "\"$t\""; then
+              echo "tools/list missing expected tool: $t" >&2
+              exit 1
+            fi
+            echo "  ✓ $t present"
+          done
+
+          kill "$SSE_PID" 2>/dev/null || true

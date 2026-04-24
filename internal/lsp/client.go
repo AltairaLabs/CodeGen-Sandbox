@@ -363,22 +363,36 @@ func decodeWorkspaceEdit(raw json.RawMessage, root string) (WorkspaceEdit, error
 	if err := json.Unmarshal(raw, &edit); err != nil {
 		return WorkspaceEdit{}, fmt.Errorf("lsp: decode workspace edit: %w", err)
 	}
-	out := WorkspaceEdit{Changes: make(map[string][]TextEdit, len(edit.Changes))}
+	// gopls (and most modern servers) return `documentChanges`; older / simpler
+	// servers return `changes`. Merge both into the normalised map so callers
+	// don't care which form came back.
+	size := len(edit.Changes) + len(edit.DocumentChanges)
+	out := WorkspaceEdit{Changes: make(map[string][]TextEdit, size)}
 	for uri, edits := range edit.Changes {
 		rel := uriToRel(uri, root)
-		converted := make([]TextEdit, 0, len(edits))
-		for _, e := range edits {
-			converted = append(converted, TextEdit{
-				Line:    e.Range.Start.Line + 1,
-				Col:     e.Range.Start.Character + 1,
-				EndLine: e.Range.End.Line + 1,
-				EndCol:  e.Range.End.Character + 1,
-				NewText: e.NewText,
-			})
-		}
-		out.Changes[rel] = converted
+		out.Changes[rel] = append(out.Changes[rel], toTextEdits(edits)...)
+	}
+	for _, dc := range edit.DocumentChanges {
+		rel := uriToRel(dc.TextDocument.URI, root)
+		out.Changes[rel] = append(out.Changes[rel], toTextEdits(dc.Edits)...)
 	}
 	return out, nil
+}
+
+// toTextEdits converts the on-wire 0-based edits into the 1-based TextEdit
+// form surfaced through WorkspaceEdit.Changes.
+func toTextEdits(edits []lspTextEdit) []TextEdit {
+	out := make([]TextEdit, 0, len(edits))
+	for _, e := range edits {
+		out = append(out, TextEdit{
+			Line:    e.Range.Start.Line + 1,
+			Col:     e.Range.Start.Character + 1,
+			EndLine: e.Range.End.Line + 1,
+			EndCol:  e.Range.End.Character + 1,
+			NewText: e.NewText,
+		})
+	}
+	return out
 }
 
 func toLocations(locs []lspLocation, root string) []Location {

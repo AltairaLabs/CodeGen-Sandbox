@@ -77,6 +77,54 @@ func TestDecodeWorkspaceEdit_Happy(t *testing.T) {
 	assert.Equal(t, "hello", edits[0].NewText)
 }
 
+// TestDecodeWorkspaceEdit_DocumentChanges exercises the `documentChanges`
+// form that gopls returns (LSP 3.16+). Before this branch of the decoder
+// existed the rename_symbol tool returned "no rename available" against
+// real gopls — see the P0 integration smoke that caught it.
+func TestDecodeWorkspaceEdit_DocumentChanges(t *testing.T) {
+	raw := json.RawMessage(`{"documentChanges":[
+		{
+			"textDocument":{"version":0,"uri":"file:///workspace/a.go"},
+			"edits":[{"range":{"start":{"line":2,"character":5},"end":{"line":2,"character":8}},"newText":"Sum"}]
+		},
+		{
+			"textDocument":{"version":0,"uri":"file:///workspace/b.go"},
+			"edits":[{"range":{"start":{"line":5,"character":4},"end":{"line":5,"character":7}},"newText":"Sum"}]
+		}
+	]}`)
+	we, err := decodeWorkspaceEdit(raw, "/workspace")
+	require.NoError(t, err)
+	aEdits, aOK := we.Changes["a.go"]
+	bEdits, bOK := we.Changes["b.go"]
+	require.True(t, aOK, "missing a.go: %+v", we.Changes)
+	require.True(t, bOK, "missing b.go: %+v", we.Changes)
+	require.Len(t, aEdits, 1)
+	require.Len(t, bEdits, 1)
+	assert.Equal(t, 3, aEdits[0].Line) // 0-based line 2 → 1-based 3
+	assert.Equal(t, "Sum", aEdits[0].NewText)
+	assert.Equal(t, "Sum", bEdits[0].NewText)
+}
+
+// TestDecodeWorkspaceEdit_BothForms confirms the decoder merges `changes`
+// and `documentChanges` into the same output map when a server returns
+// both (rare but spec-legal).
+func TestDecodeWorkspaceEdit_BothForms(t *testing.T) {
+	raw := json.RawMessage(`{
+		"changes":{"file:///workspace/a.go":[
+			{"range":{"start":{"line":0,"character":0},"end":{"line":0,"character":1}},"newText":"x"}
+		]},
+		"documentChanges":[{
+			"textDocument":{"version":0,"uri":"file:///workspace/b.go"},
+			"edits":[{"range":{"start":{"line":0,"character":0},"end":{"line":0,"character":1}},"newText":"y"}]
+		}]
+	}`)
+	we, err := decodeWorkspaceEdit(raw, "/workspace")
+	require.NoError(t, err)
+	assert.Len(t, we.Changes, 2)
+	assert.Equal(t, "x", we.Changes["a.go"][0].NewText)
+	assert.Equal(t, "y", we.Changes["b.go"][0].NewText)
+}
+
 func TestURIToPathAndRel(t *testing.T) {
 	// uriToPath
 	assert.Equal(t, "/workspace/foo.go", uriToPath("file:///workspace/foo.go"))
