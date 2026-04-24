@@ -36,12 +36,31 @@ const (
 	gitIndexEnvKey = "GIT_INDEX_FILE="
 )
 
-// RegisterSnapshots registers the four snapshot tools.
+// RegisterSnapshots registers the four snapshot tools (create + restore
+// are mutating; list + diff are read-only). Kept as a convenience wrapper
+// so existing tests / callers that want the full set don't have to touch
+// every call site; the server uses the split halves directly so it can
+// gate the mutating pair on read-only mode.
 func RegisterSnapshots(s ToolAdder, deps *Deps) {
-	registerSnapshotCreate(s, deps)
+	RegisterSnapshotsReadOnly(s, deps)
+	RegisterSnapshotsMutating(s, deps)
+}
+
+// RegisterSnapshotsReadOnly registers the non-mutating snapshot tools
+// (snapshot_list + snapshot_diff). Safe to expose in read-only mode —
+// listing and diffing do not touch refs/sandbox/snapshots/* or the
+// workspace tree.
+func RegisterSnapshotsReadOnly(s ToolAdder, deps *Deps) {
 	registerSnapshotList(s, deps)
-	registerSnapshotRestore(s, deps)
 	registerSnapshotDiff(s, deps)
+}
+
+// RegisterSnapshotsMutating registers the workspace-mutating snapshot
+// tools (snapshot_create + snapshot_restore). Skipped in read-only mode:
+// create writes a new snapshot ref, restore resets the workspace tree.
+func RegisterSnapshotsMutating(s ToolAdder, deps *Deps) {
+	registerSnapshotCreate(s, deps)
+	registerSnapshotRestore(s, deps)
 }
 
 func registerSnapshotCreate(s ToolAdder, deps *Deps) {

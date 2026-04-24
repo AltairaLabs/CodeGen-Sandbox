@@ -13,10 +13,27 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
-// RegisterLSPTools registers the three LSP-backed navigation tools.
+// RegisterLSPTools registers the three LSP-backed navigation tools
+// (find_definition + find_references + rename_symbol). Kept as a
+// convenience wrapper so existing tests / callers that want the full
+// set don't have to touch every call site when the read-only / mutating
+// split lands; the server uses the split halves directly so it can gate
+// rename_symbol on read-only mode.
 func RegisterLSPTools(s ToolAdder, deps *Deps) {
+	RegisterLSPNavigation(s, deps)
+	RegisterLSPRename(s, deps)
+}
+
+// RegisterLSPNavigation registers the read-only LSP navigation tools
+// (find_definition + find_references). Safe to expose in read-only mode.
+func RegisterLSPNavigation(s ToolAdder, deps *Deps) {
 	registerFindDefinition(s, deps)
 	registerFindReferences(s, deps)
+}
+
+// RegisterLSPRename registers the mutating LSP tool (rename_symbol).
+// Skipped in read-only mode.
+func RegisterLSPRename(s ToolAdder, deps *Deps) {
 	registerRenameSymbol(s, deps)
 }
 
