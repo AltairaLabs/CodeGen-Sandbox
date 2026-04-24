@@ -59,14 +59,25 @@ func ParseLint(text string) []LintFinding {
 	return findings
 }
 
-// Lint runs the project's linter and returns parsed findings. Returns
-// (nil, nil) when there is no detected project. Returns (nil,
-// ErrLinterMissing) when the linter binary isn't installed. Returns
+// Lint runs the project's linter using whatever Detect() returns first.
+// Single-language-workspace convenience wrapper around LintWith — for
+// polyglot-aware callers (which want to dispatch on a `language` arg) use
+// LintWith and pass the detector chosen by your dispatch.
+func Lint(ctx context.Context, root string, timeoutSec int) ([]LintFinding, error) {
+	det := Detect(root)
+	if det == nil {
+		return nil, nil
+	}
+	return LintWith(ctx, det, root, timeoutSec)
+}
+
+// LintWith runs the given detector's linter and returns parsed findings.
+// Returns (nil, nil) when the detector exposes no LintCmd. Returns
+// (nil, ErrLinterMissing) when the linter binary isn't installed. Returns
 // (findings, nil) on exit 0 or exit 1 (the latter is the linter's
 // "findings exist" convention). Returns (findings, err) on timeout or
 // spawn error — callers treat this as best-effort.
-func Lint(ctx context.Context, root string, timeoutSec int) ([]LintFinding, error) {
-	det := Detect(root)
+func LintWith(ctx context.Context, det Detector, root string, timeoutSec int) ([]LintFinding, error) {
 	if det == nil {
 		return nil, nil
 	}

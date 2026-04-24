@@ -47,15 +47,28 @@ vs. the wrong shape: returning "0 tests passed" or "no findings" for a language 
 
 ## Monorepos with multiple languages
 
-See [#19](https://github.com/AltairaLabs/CodeGen-Sandbox/issues/19) for the full issue. The contract:
+Polyglot workspaces (e.g. a Go service with a frontend `package.json`, or a Python service with a Rust extension crate) are first-class. The contract, implemented in `verify.DetectAll` and `tools.dispatchByLanguage`:
 
-1. `Detect(root)` returns `[]Detector` — one per marker file found in the workspace.
-2. Every language-coupled tool accepts an optional `language` argument (`"go" | "node" | "python" | "rust"`).
-3. When `language` is omitted AND multiple detectors match, the tool returns an error listing the detected set; the agent picks one.
-4. When `language` is omitted AND exactly one detector matches, the tool uses it (identical to today's single-language behaviour).
-5. A `language: "all"` shortcut runs the tool against every detected language and interleaves output, marked per-language.
+1. **`verify.DetectAll(root)`** returns every `Detector` whose marker is present at `root`, in a stable order: Go → Rust → Node → Python.
+2. Language-coupled verify tools (`run_tests`, `run_lint`, `run_typecheck`, `run_failing_tests`, `run_script`) accept an optional `language` argument: `"go"`, `"node"`, `"python"`, or `"rust"`. Case-insensitive; surrounding whitespace trimmed.
+3. **When `language` is omitted AND exactly one detector matches**, the tool uses it. Single-language workspaces behave identically to the pre-polyglot version.
+4. **When `language` is omitted AND multiple detectors match**, the tool returns an error listing the detected set:
 
-This keeps the per-request tool surface simple while refusing to silently guess in ambiguous cases.
+   ```
+   polyglot workspace: 2 project types detected (go, node) — pass `language` to pick one
+   ```
+
+   The agent picks one and retries. The sandbox never guesses in ambiguous cases.
+5. **When `language` is provided**, the matching detector is used. If the hinted language isn't one of the detected set:
+
+   ```
+   language "rust" not detected in workspace; detected: go, node
+   ```
+
+### Not in this iteration
+
+- **`language: "all"` shortcut** — running every detector and interleaving output is a separate design call (per-language prefixing, per-language coverage handling, etc.). Agents working across several languages in a monorepo should call each tool once per language.
+- **Cross-language LSP dispatch** — `find_definition` / `find_references` / `rename_symbol` still use `verify.Detect` (first-match). In a polyglot workspace an agent navigating a `.ts` file while `go.mod` is also present will get the Go LSP, not the Node one. Tracked separately; the dispatch helper is a drop-in target when that lift happens.
 
 ## Cross-language, language-agnostic tools
 

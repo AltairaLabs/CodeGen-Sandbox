@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/altairalabs/codegen-sandbox/internal/verify"
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
@@ -22,9 +21,10 @@ const (
 // the detected package manager (npm / pnpm / yarn / bun).
 func RegisterRunScript(s ToolAdder, deps *Deps) {
 	tool := mcp.NewTool("run_script",
-		mcp.WithDescription("Run a script defined in package.json#scripts via the detected Node package manager (npm / pnpm / yarn / bun). Node-only today — Go / Python / Rust workspaces surface a clear 'only Node projects support scripts' error."),
+		mcp.WithDescription("Run a script defined in package.json#scripts via the detected Node package manager (npm / pnpm / yarn / bun). Node-only today — Go / Python / Rust workspaces surface a clear 'only Node projects support scripts' error. In a polyglot workspace pass `language` to dispatch to the Node detector."),
 		mcp.WithString("name", mcp.Required(), mcp.Description("Script name as defined in package.json#scripts (e.g. \"build\", \"dev\", \"lint\").")),
 		mcp.WithNumber("timeout", mcp.Description(fmt.Sprintf("Timeout in seconds. Default %d, clamped to a maximum of %d.", defaultRunScriptTimeoutSec, maxRunScriptTimeoutSec))),
+		withLanguageArg(),
 	)
 	s.AddTool(tool, HandleRunScript(deps))
 }
@@ -35,16 +35,16 @@ func RegisterRunScript(s ToolAdder, deps *Deps) {
 // deterministic error messages at every failure layer.
 func HandleRunScript(deps *Deps) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		det := verify.Detect(deps.Workspace.Root())
-		if det == nil {
-			return ErrorResult("no supported project detected in workspace root"), nil
+		args, _ := req.Params.Arguments.(map[string]any)
+		det, errRes := dispatchByLanguage(deps, args)
+		if errRes != nil {
+			return errRes, nil
 		}
 		runner := det.ScriptRunner()
 		if len(runner) == 0 {
 			return ErrorResult("run_script: only Node projects support scripts today (detected: %s)", det.Language()), nil
 		}
 
-		args, _ := req.Params.Arguments.(map[string]any)
 		scriptName := scriptNameArg(args)
 		if scriptName == "" {
 			return ErrorResult("run_script: name is required"), nil
