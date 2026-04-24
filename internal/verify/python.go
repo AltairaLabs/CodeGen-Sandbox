@@ -54,6 +54,14 @@ func (*pythonDetector) ParseTestFailures(_, _ string) []TestFailure { return nil
 // alongside codegen-sandbox-tools-python bundling.
 func (*pythonDetector) LSPCommand() []string { return nil }
 
+// FormatCheckCmd returns `ruff format --check --diff <file>`. `--check`
+// makes ruff exit 1 on unformatted code without rewriting, and `--diff`
+// prints the fix it would apply — handy feedback for the agent to either
+// accept (re-run without `--check`) or correct manually.
+func (*pythonDetector) FormatCheckCmd(file string) []string {
+	return []string{"ruff", "format", "--check", "--diff", file}
+}
+
 // parseLintRegex is the shared implementation for regex-based per-line
 // finding extraction. Named subexpressions `file`, `line`, `col`, `rule`,
 // `msg` are looked up; others are ignored.

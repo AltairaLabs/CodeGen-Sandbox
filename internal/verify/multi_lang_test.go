@@ -64,3 +64,49 @@ func TestDetect_GoWinsOverOthers(t *testing.T) {
 func TestDetect_UnknownMarkerReturnsNil(t *testing.T) {
 	assert.Nil(t, verify.Detect(seedMarker(t, "Makefile")))
 }
+
+// TestDetect_FormatCheckCmd covers the per-language argv returned by
+// FormatCheckCmd. Go returns nil (its lint path already covers formatting
+// drift); Python/Node/Rust return a formatter invocation targeting the
+// single edited file. No subprocess is spawned here — the check is that
+// each detector returns the shape the post-edit format hook expects.
+func TestDetect_FormatCheckCmd(t *testing.T) {
+	cases := []struct {
+		name     string
+		marker   string
+		file     string
+		expected []string
+	}{
+		{
+			name:     "go returns nil (lint path covers formatting)",
+			marker:   "go.mod",
+			file:     "foo.go",
+			expected: nil,
+		},
+		{
+			name:     "python uses ruff format --check --diff",
+			marker:   "pyproject.toml",
+			file:     "app/main.py",
+			expected: []string{"ruff", "format", "--check", "--diff", "app/main.py"},
+		},
+		{
+			name:     "node uses prettier --check",
+			marker:   "package.json",
+			file:     "src/index.ts",
+			expected: []string{"prettier", "--check", "src/index.ts"},
+		},
+		{
+			name:     "rust uses rustfmt --check",
+			marker:   "Cargo.toml",
+			file:     "src/lib.rs",
+			expected: []string{"rustfmt", "--check", "src/lib.rs"},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			d := verify.Detect(seedMarker(t, tc.marker))
+			require.NotNil(t, d)
+			assert.Equal(t, tc.expected, d.FormatCheckCmd(tc.file))
+		})
+	}
+}

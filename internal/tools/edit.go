@@ -62,6 +62,9 @@ func HandleEdit(deps *Deps) func(context.Context, mcp.CallToolRequest) (*mcp.Cal
 		if feedback := postEditLintFeedback(ctx, deps.Workspace.Root(), abs); feedback != "" {
 			msg += "\n\n" + feedback
 		}
+		if feedback := postEditFormatFeedback(ctx, deps.Workspace.Root(), abs); feedback != "" {
+			msg += "\n\n" + feedback
+		}
 		return TextResult(msg), nil
 	}
 }
@@ -173,4 +176,72 @@ func postEditLintFeedback(ctx context.Context, root, editedAbs string) string {
 		fmt.Fprintf(&sb, "%s:%d:%d:%s: %s\n", f.File, f.Line, f.Column, f.Rule, f.Message)
 	}
 	return sb.String()
+}
+
+// postEditFormatTimeoutSec is shorter than the lint timeout: a per-file
+// format check is cheap (prettier / rustfmt / ruff all return in sub-second
+// on small files) so a tight ceiling keeps Edit latency bounded even if a
+// formatter stalls.
+const postEditFormatTimeoutSec = 10
+
+// postEditFormatMaxLines caps the rendered formatter output. Prettier/ruff
+// diffs can be long; the agent sees the first chunk plus a truncation
+// marker — enough to understand the shape of the drift without blowing
+// up the Edit result.
+const postEditFormatMaxLines = 500
+
+// postEditFormatFeedback runs the detector's per-file format check (best
+// effort) and returns a block to append to the Edit success message.
+// Returns "" when:
+//   - no detector for this workspace,
+//   - detector.FormatCheckCmd returns nil (language has no formatter
+//     wired),
+//   - the file is already correctly formatted.
+//
+// When the detector advertises a formatter whose binary isn't on PATH,
+// returns a one-line advisory ("post-edit format: <binary> not found on
+// PATH") — Edit itself must never fail on format feedback.
+//
+// This is a sibling to postEditLintFeedback (same best-effort contract,
+// same file-scoped filtering concept) but deliberately distinct: Go's
+// FormatCheckCmd is nil because its lint path already covers gofmt, while
+// Python/Node/Rust surface format feedback separately because their lint
+// paths (ruff check, eslint, clippy) don't.
+func postEditFormatFeedback(ctx context.Context, root, editedAbs string) string {
+	rel, err := filepath.Rel(root, editedAbs)
+	if err != nil {
+		return ""
+	}
+	result, err := verify.FormatCheck(ctx, root, rel, postEditFormatTimeoutSec)
+	if result == nil {
+		// Either no detector or no formatter wired for this language —
+		// stay silent per the nil-detector contract.
+		return ""
+	}
+	if errors.Is(err, verify.ErrFormatterMissing) {
+		return fmt.Sprintf("post-edit format: %s not found on PATH", result.Binary)
+	}
+	if result.OK {
+		// File is formatted — no block to append.
+		return ""
+	}
+	var sb strings.Builder
+	sb.WriteString("--- format ---\n")
+	sb.WriteString(truncateFormatOutput(result.Output, postEditFormatMaxLines))
+	return strings.TrimRight(sb.String(), "\n")
+}
+
+// truncateFormatOutput returns text if it has <= max lines, otherwise
+// returns the first max lines plus a "... (N lines truncated)" footer.
+// Distinct from the package-local truncateLines helper in grep.go — that
+// one works in "keep full trailing newlines" mode for grep's line output,
+// whereas we want a stable truncation marker on overflow to keep the
+// format section self-describing.
+func truncateFormatOutput(text string, maxLines int) string {
+	lines := strings.Split(text, "\n")
+	if len(lines) <= maxLines {
+		return text
+	}
+	truncated := len(lines) - maxLines
+	return strings.Join(lines[:maxLines], "\n") + fmt.Sprintf("\n... (%d lines truncated)\n", truncated)
 }

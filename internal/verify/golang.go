@@ -46,3 +46,9 @@ func (*goDetector) ParseTestFailures(stdout, _ string) []TestFailure {
 // codegen-sandbox-tools-go per #26); the LSP layer surfaces "gopls not on
 // PATH" cleanly when absent.
 func (*goDetector) LSPCommand() []string { return []string{"gopls", "serve"} }
+
+// FormatCheckCmd returns nil for Go: the existing post-edit lint path runs
+// golangci-lint, whose default configuration includes gofmt / gofumpt
+// coverage that subsumes a standalone format-check hook. Running both would
+// surface the same formatting drift twice.
+func (*goDetector) FormatCheckCmd(_ string) []string { return nil }

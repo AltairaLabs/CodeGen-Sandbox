@@ -1,9 +1,9 @@
 ---
 title: Edit
-description: Exact-string replacement with required prior Read and post-edit lint feedback.
+description: Exact-string replacement with required prior Read, post-edit lint feedback, and post-edit format check.
 ---
 
-Replace an exact substring in a file. On Go projects, lint findings for the edited file are appended to the success message.
+Replace an exact substring in a file. On Go projects, lint findings for the edited file are appended to the success message. On Python / Node / Rust projects, a single-file format check (`ruff format --check --diff`, `prettier --check`, `rustfmt --check`) is appended under `--- format ---`.
 
 ## Schema
 
@@ -26,6 +26,7 @@ Replace an exact substring in a file. On Go projects, lint findings for the edit
    - \>1 with `replace_all=false` → error `old_string matched N times in %s; add context to make it unique or set replace_all=true`
    - \>1 with `replace_all=true` → replace all, atomic write.
 6. On success, run the project's linter with a 30s timeout. If any findings apply to the edited file, append them to the response.
+7. If the detected language declares a per-file format check (`Detector.FormatCheckCmd`) and its binary is on PATH, run it with a 10s timeout and append any output under a `--- format ---` header. Go's `FormatCheckCmd` is nil (its lint path already covers gofmt), so Go edits never render a format section.
 
 ## Post-edit lint feedback
 
@@ -38,6 +39,23 @@ The "single biggest quality win" per the project proposal. On Go projects, after
 Best-effort: if the linter times out, isn't installed, or the project isn't Go, the base success message is unchanged.
 
 See [Post-edit lint feedback](/concepts/post-edit-lint-feedback/).
+
+## Post-edit format check
+
+On non-Go projects, after the lint section (if any), Edit runs the detector's `FormatCheckCmd` against the edited file with a 10s timeout. Per language:
+
+| Language | Command | Notes |
+|---|---|---|
+| Go | (nil) | Skipped — the lint path already covers gofmt / gofumpt coverage. |
+| Python | `ruff format --check --diff <file>` | `--diff` prints the fix ruff would apply; `--check` keeps it non-destructive. |
+| Node | `prettier --check <file>` | Assumes prettier is on PATH directly; projects installing it locally shadow via a wrapper script. |
+| Rust | `rustfmt --check <file>` | Edition is inherited from the enclosing `Cargo.toml`. |
+
+Output rules:
+
+- Formatter exit 0 (file is formatted) → no section rendered.
+- Formatter exit non-zero with output → appended under `--- format ---`, truncated to 500 lines.
+- Detector declares a formatter but the binary isn't on PATH → a single line `post-edit format: <binary> not found on PATH` is appended (Edit never fails on format feedback).
 
 ## Example output
 
@@ -54,6 +72,19 @@ replaced 1 occurrence(s) in probe.go
 
 post-edit lint findings (1):
 probe.go:5:3:errcheck: Error return value of `os.WriteFile` is not checked
+```
+
+Edit on a Python file that's not formatted (rendered under `--- format ---`):
+
+```
+replaced 1 occurrence(s) in app.py
+
+--- format ---
+--- app.py
++++ app.py
+@@ -1 +1 @@
+-x=1
++x = 1
 ```
 
 ## Related
