@@ -22,7 +22,6 @@ import (
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
-	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
 	"go.opentelemetry.io/otel/trace"
 	"go.opentelemetry.io/otel/trace/noop"
 )
@@ -58,16 +57,12 @@ func New(ctx context.Context, endpoint string) (*Tracer, ShutdownFunc, error) {
 		return nil, nil, fmt.Errorf("otlp exporter: %w", err)
 	}
 
-	res, err := resource.Merge(
-		resource.Default(),
-		resource.NewWithAttributes(
-			semconv.SchemaURL,
-			semconv.ServiceName(serviceName),
-		),
-	)
-	if err != nil {
-		return nil, nil, fmt.Errorf("otlp resource: %w", err)
-	}
+	// A schemaless resource sidesteps the SDK-default schema URL pinning
+	// (which moves between otel SDK releases) and keeps us free of a direct
+	// semconv version dependency. We set only service.name explicitly — the
+	// attribute key is stable across semconv versions and is what collectors
+	// route on.
+	res := resource.NewSchemaless(attribute.String("service.name", serviceName))
 
 	tp := sdktrace.NewTracerProvider(
 		sdktrace.WithBatcher(exp),

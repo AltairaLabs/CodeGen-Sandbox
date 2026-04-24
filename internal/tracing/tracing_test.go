@@ -2,7 +2,10 @@ package tracing_test
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -67,4 +70,32 @@ func TestNewForTest_NilProvider(t *testing.T) {
 	tr, shutdown := tracing.NewForTest(nil)
 	require.Nil(t, tr)
 	require.Nil(t, shutdown)
+}
+
+// TestNew_ValidEndpointBuildsTracer drives the happy path of New: given a
+// reachable-looking endpoint, New must construct an exporter + provider,
+// return a non-nil Tracer + ShutdownFunc, and Shutdown must run cleanly.
+// We point at a stub HTTP server so the batcher's eventual flush doesn't
+// block or log scary errors during teardown.
+func TestNew_ValidEndpointBuildsTracer(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(srv.Close)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	tr, shutdown, err := tracing.New(ctx, srv.URL)
+	require.NoError(t, err)
+	require.NotNil(t, tr)
+	require.NotNil(t, shutdown)
+
+	// Start a span to confirm the built Tracer is functional.
+	_, span := tr.Start(ctx, "Probe")
+	span.End()
+
+	shutdownCtx, cancelShutdown := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancelShutdown()
+	require.NoError(t, shutdown(shutdownCtx))
 }

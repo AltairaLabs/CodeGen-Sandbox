@@ -5,3 +5,4 @@
 .DS_Store
 coverage.out
 docs/local-backlog/
+.claude/

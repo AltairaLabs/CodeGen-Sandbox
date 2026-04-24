@@ -146,6 +146,43 @@ func TestTracingMiddleware_NilTracerIsSafe(t *testing.T) {
 	assert.True(t, called)
 }
 
+// TestExtractErrorText covers the branches not reached via the middleware:
+// non-IsError results, empty Content, and non-text Content entries.
+func TestExtractErrorText(t *testing.T) {
+	// Non-error result → empty string.
+	assert.Empty(t, extractErrorText(mcp.NewToolResultText("fine"), nil))
+	// Nil result + nil err → empty string.
+	assert.Empty(t, extractErrorText(nil, nil))
+	// IsError but empty Content → empty string.
+	assert.Empty(t, extractErrorText(&mcp.CallToolResult{IsError: true}, nil))
+	// IsError with non-TextContent → empty string.
+	res := &mcp.CallToolResult{
+		IsError: true,
+		Content: []mcp.Content{mcp.ImageContent{Type: "image", MIMEType: "image/png"}},
+	}
+	assert.Empty(t, extractErrorText(res, nil))
+	// Happy path — err wins over result text.
+	assert.Equal(t, "boom", extractErrorText(mcp.NewToolResultError("structured"), errors.New("boom")))
+}
+
+// TestTruncate covers the edge cases around the ellipsis clipping: a
+// non-positive cap returns the input unchanged, a cap smaller than the
+// ellipsis byte-length returns a raw byte clip, and the normal case
+// produces an ellipsis-suffixed output that stays under the cap.
+func TestTruncate(t *testing.T) {
+	// n <= 0 → unchanged.
+	assert.Equal(t, "hello", truncate("hello", 0))
+	assert.Equal(t, "hello", truncate("hello", -3))
+	// len(s) <= n → unchanged.
+	assert.Equal(t, "hi", truncate("hi", 100))
+	// n < len(ellipsis) → raw byte clip (no suffix).
+	assert.Equal(t, "he", truncate("hello", 2))
+	// Normal case → ellipsis-suffixed, total bytes ≤ n.
+	got := truncate(strings.Repeat("x", 100), 10)
+	assert.LessOrEqual(t, len(got), 10)
+	assert.True(t, strings.HasSuffix(got, "…"))
+}
+
 // attrMap flattens a span's attribute slice into a name→value map for
 // test-side lookups. Tests don't care about attribute order; they care about
 // presence and value.
