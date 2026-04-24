@@ -36,3 +36,16 @@ func fileExists(path string) bool {
 	info, err := os.Stat(path)
 	return err == nil && !info.IsDir()
 }
+
+// AllDetectors returns one instance of each registered Detector. Order is
+// stable and matches Detect()'s detection order (Go, Rust, Node, Python).
+// Used by callers that need to enumerate per-language capabilities
+// (currently: LSP argv lookup) without having to resolve a workspace first.
+func AllDetectors() []Detector {
+	return []Detector{
+		&goDetector{},
+		&rustDetector{},
+		&nodeDetector{},
+		&pythonDetector{},
+	}
+}

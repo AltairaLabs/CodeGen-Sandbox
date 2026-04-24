@@ -30,6 +30,12 @@ type Detector interface {
 	// detected" or "format not understood"; last_test_failures surfaces the
 	// distinction via the detector's language label.
 	ParseTestFailures(stdout, stderr string) []TestFailure
+	// LSPCommand returns the argv for launching the language server for
+	// this detector's language, or nil when no server is wired. Callers
+	// surface a "LSP not configured for this language" message for nil
+	// results; a non-nil result whose first element isn't on PATH surfaces
+	// a "<binary> not found on PATH" message at Start time.
+	LSPCommand() []string
 }
 
 // TestFailure is one structured test failure extracted from a test runner's

@@ -40,3 +40,9 @@ func (*goDetector) ParseLint(stdout, _ string) []LintFinding {
 func (*goDetector) ParseTestFailures(stdout, _ string) []TestFailure {
 	return ParseGoTest2JSON(stdout)
 }
+
+// LSPCommand returns the gopls launch command. `gopls serve` is the canonical
+// stdio invocation. The sandbox image may not include gopls (it ships in
+// codegen-sandbox-tools-go per #26); the LSP layer surfaces "gopls not on
+// PATH" cleanly when absent.
+func (*goDetector) LSPCommand() []string { return []string{"gopls", "serve"} }

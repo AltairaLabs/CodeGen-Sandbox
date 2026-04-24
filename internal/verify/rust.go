@@ -55,3 +55,7 @@ func (*rustDetector) ParseLint(_, stderr string) []LintFinding {
 // ParseTestFailures is not yet implemented for Rust; returns nil so
 // last_test_failures surfaces a "not supported for rust" result.
 func (*rustDetector) ParseTestFailures(_, _ string) []TestFailure { return nil }
+
+// LSPCommand returns nil: rust-analyzer lands in a follow-up issue
+// alongside codegen-sandbox-tools-rust bundling.
+func (*rustDetector) LSPCommand() []string { return nil }
