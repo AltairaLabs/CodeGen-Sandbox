@@ -107,24 +107,13 @@ func HandleWatchProcess(deps *Deps) func(context.Context, mcp.CallToolRequest) (
 		sh := NewWatchedShell(id, command, patterns, patternSources, idleTimeout)
 		deps.Shells.Register(sh)
 
-		// Same /bin/bash -c machinery as background Bash — see bash.go for
-		// why the path is absolute and Setpgid is used.
-		cmd := exec.Command("/bin/bash", "-c", command) //nolint:gosec // agent-supplied, same contract as Bash
-		cmd.Dir = deps.Workspace.Root()
-		cmd.Stdin = nil
-		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-
-		stdoutPipe, stderrPipe, errRes := openBashPipes(cmd)
+		// Share /bin/bash -c + Setpgid + stdout/stderr pipe plumbing with
+		// background Bash — both surfaces spawn identically-shaped child
+		// processes and any divergence would be a bug.
+		cmd, stdoutPipe, stderrPipe, errRes := startBackgroundBashCmd(deps, sh, command, "watch_process")
 		if errRes != nil {
-			deps.Shells.Remove(id)
 			return errRes, nil
 		}
-
-		if err := cmd.Start(); err != nil {
-			deps.Shells.Remove(id)
-			return ErrorResult("watch_process start: %v", err), nil
-		}
-		sh.SetPgid(cmd.Process.Pid)
 
 		go drainWatchStdout(stdoutPipe, sh)
 		go drainWatchStderr(stderrPipe, sh)

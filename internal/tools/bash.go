@@ -220,24 +220,10 @@ func handleBashBackground(deps *Deps, command string) (*mcp.CallToolResult, erro
 	sh := NewBackgroundShell(id, command)
 	deps.Shells.Register(sh)
 
-	// Absolute path — see newBashForegroundCmd for why.
-	cmd := exec.Command("/bin/bash", "-c", command)
-	cmd.Dir = deps.Workspace.Root()
-	cmd.Stdin = nil
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-
-	stdoutPipe, stderrPipe, errRes := openBashPipes(cmd)
+	cmd, stdoutPipe, stderrPipe, errRes := startBackgroundBashCmd(deps, sh, command, "bash-bg")
 	if errRes != nil {
-		deps.Shells.Remove(id)
 		return errRes, nil
 	}
-
-	if err := cmd.Start(); err != nil {
-		deps.Shells.Remove(id)
-		return ErrorResult("bash-bg start: %v", err), nil
-	}
-	// After Setpgid + Start, the child's pid is also its process group id.
-	sh.SetPgid(cmd.Process.Pid)
 
 	go drainPipe(stdoutPipe, sh.AppendStdout)
 	go drainPipe(stderrPipe, sh.AppendStderr)
@@ -246,14 +232,45 @@ func handleBashBackground(deps *Deps, command string) (*mcp.CallToolResult, erro
 	return TextResult(fmt.Sprintf("shell_id: %s\nstarted in background: %s\n", id, command)), nil
 }
 
-func openBashPipes(cmd *exec.Cmd) (stdout, stderr io.Reader, errRes *mcp.CallToolResult) {
+// startBackgroundBashCmd spawns a /bin/bash -c command for a pre-registered
+// BackgroundShell (either a plain background Bash shell or a watched
+// shell — both flavours share identical spawn semantics). Returns the
+// running *exec.Cmd plus its stdout/stderr pipes on success. On failure
+// the shell is removed from the registry before the error is returned.
+//
+// The tag arg is used only in the error message to disambiguate which
+// surface surfaced a spawn failure to the agent; it is not baked into
+// the child's environment.
+func startBackgroundBashCmd(deps *Deps, sh *BackgroundShell, command, tag string) (*exec.Cmd, io.Reader, io.Reader, *mcp.CallToolResult) {
+	// Absolute path — see newBashForegroundCmd for why.
+	cmd := exec.Command("/bin/bash", "-c", command)
+	cmd.Dir = deps.Workspace.Root()
+	cmd.Stdin = nil
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+
+	stdoutPipe, stderrPipe, errRes := openBashPipes(cmd, tag)
+	if errRes != nil {
+		deps.Shells.Remove(sh.ID())
+		return nil, nil, nil, errRes
+	}
+
+	if err := cmd.Start(); err != nil {
+		deps.Shells.Remove(sh.ID())
+		return nil, nil, nil, ErrorResult("%s start: %v", tag, err)
+	}
+	// After Setpgid + Start, the child's pid is also its process group id.
+	sh.SetPgid(cmd.Process.Pid)
+	return cmd, stdoutPipe, stderrPipe, nil
+}
+
+func openBashPipes(cmd *exec.Cmd, tag string) (stdout, stderr io.Reader, errRes *mcp.CallToolResult) {
 	stdoutPipe, err := cmd.StdoutPipe()
 	if err != nil {
-		return nil, nil, ErrorResult("bash-bg stdout: %v", err)
+		return nil, nil, ErrorResult("%s stdout: %v", tag, err)
 	}
 	stderrPipe, err := cmd.StderrPipe()
 	if err != nil {
-		return nil, nil, ErrorResult("bash-bg stderr: %v", err)
+		return nil, nil, ErrorResult("%s stderr: %v", tag, err)
 	}
 	return stdoutPipe, stderrPipe, nil
 }
