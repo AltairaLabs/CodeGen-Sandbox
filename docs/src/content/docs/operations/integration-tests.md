@@ -59,7 +59,7 @@ A focused companion to `e2e-p0.sh` that boots the sandbox in `-workspaces=primar
 bash scripts/e2e-multi-workspace.sh
 ```
 
-Runtime ~10s. Binaries needed: `go`, `bash`, `curl`, `jq`. Wired into CI as the `e2e-multi-workspace` job parallel to `e2e-smoke`.
+Runtime ~10s. Binaries needed: `go`, `bash`, `curl`, `jq`, `ripgrep` (Glob + Grep delegate to `rg`). Wired into CI as the `e2e-multi-workspace` job parallel to `e2e-smoke`.
 
 ## Tier 4 — Docker image smoke (CI only)
 
