@@ -155,6 +155,41 @@ func TestScrubAndDenylist_Hits(t *testing.T) {
 	assert.Contains(t, body, "sandbox_path_violations_total 1")
 }
 
+func TestAgentHealthMetrics_Propagate(t *testing.T) {
+	m, err := metrics.New()
+	require.NoError(t, err)
+
+	m.SetAgentTestFailureStreak(4)
+	m.SetAgentTimeSinceLastGreenSeconds(42)
+	m.SetAgentToolErrorRate(0.5)
+	m.IncAgentToolRepetition("Read")
+	m.IncAgentToolRepetition("Read")
+	m.IncAgentToolRepetition("Bash")
+
+	body := scrapeBody(t, m)
+	assert.Contains(t, body, "sandbox_agent_test_failure_streak 4")
+	assert.Contains(t, body, "sandbox_agent_time_since_last_green_seconds 42")
+	assert.Contains(t, body, "sandbox_agent_tool_error_rate 0.5")
+	assert.Contains(t, body, `sandbox_agent_tool_repetition_total{tool="Read"} 2`)
+	assert.Contains(t, body, `sandbox_agent_tool_repetition_total{tool="Bash"} 1`)
+}
+
+func TestAgentHealthMetrics_ClampNegativesAndRates(t *testing.T) {
+	m, err := metrics.New()
+	require.NoError(t, err)
+
+	// Negative streak / time / rate below zero all clamp to zero; rate above
+	// one clamps to one. The gauge values are then stable under scrape.
+	m.SetAgentTestFailureStreak(-5)
+	m.SetAgentTimeSinceLastGreenSeconds(-12)
+	m.SetAgentToolErrorRate(1.5)
+
+	body := scrapeBody(t, m)
+	assert.Contains(t, body, "sandbox_agent_test_failure_streak 0")
+	assert.Contains(t, body, "sandbox_agent_time_since_last_green_seconds 0")
+	assert.Contains(t, body, "sandbox_agent_tool_error_rate 1")
+}
+
 func TestNilMetrics_EveryMethodIsNoop(t *testing.T) {
 	// A nil *Metrics models "metrics disabled" — every method must be safe
 	// so callers can embed a plain pointer field without a nil-guard on every
@@ -177,6 +212,10 @@ func TestNilMetrics_EveryMethodIsNoop(t *testing.T) {
 		m.DenylistHit("sudo")
 		m.ScrubHit("x", 1)
 		m.PathViolation()
+		m.SetAgentTestFailureStreak(3)
+		m.SetAgentTimeSinceLastGreenSeconds(10)
+		m.SetAgentToolErrorRate(0.25)
+		m.IncAgentToolRepetition("Read")
 	})
 
 	// Nil Handler returns a 404 handler so embedders can unconditionally
