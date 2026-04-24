@@ -14,6 +14,7 @@ func main() {
 	addr := flag.String("addr", ":8080", "HTTP listen address for the MCP server")
 	apiAddr := flag.String("api-addr", "", "HTTP listen address for the human-facing API (empty = disabled)")
 	metricsAddr := flag.String("metrics-addr", "", "HTTP listen address for the Prometheus /metrics endpoint (empty = disabled)")
+	otlpEndpoint := flag.String("otlp-endpoint", os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"), "OTLP-HTTP exporter URL for OpenTelemetry tracing (e.g. http://otel-collector:4318). Empty disables tracing; defaults to $OTEL_EXPORTER_OTLP_ENDPOINT.")
 	enableAPI := flag.Bool("enable-api", false, "mount /api/tree, /api/file, /api/events on -api-addr")
 	enableExec := flag.Bool("enable-exec", false, "mount /api/exec (WebSocket PTY) on -api-addr")
 	enablePortForward := flag.Bool("enable-port-forward", false, "mount /api/port-forward (WebSocket TCP tunnel to loopback) on -api-addr")
@@ -38,6 +39,7 @@ func main() {
 		EnablePortForward: *enablePortForward,
 		EnableSSH:         *enableSSH,
 		SecretsDir:        *secretsDir,
+		OTLPEndpoint:      *otlpEndpoint,
 	}); err != nil {
 		log.Fatal(err)
 	}
