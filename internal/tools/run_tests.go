@@ -40,6 +40,14 @@ func HandleRunTests(deps *Deps) func(context.Context, mcp.CallToolRequest) (*mcp
 		}
 
 		recordTestResult(deps, det, res)
+		// Agent-health hooks. Failure count feeds the streak gauge; exit=0
+		// stamps the last-green timestamp so the time-since-last-green gauge
+		// can tick from zero.
+		failures := det.ParseTestFailures(string(res.Stdout), string(res.Stderr))
+		deps.Health.ObserveTestResult(len(failures))
+		if res.ExitCode == 0 {
+			deps.Health.ObserveGreen()
+		}
 		return TextResult(formatVerifyResult(res, timeoutSec)), nil
 	}
 }

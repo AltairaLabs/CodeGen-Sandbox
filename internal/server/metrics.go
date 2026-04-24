@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/altairalabs/codegen-sandbox/internal/metrics"
+	"github.com/altairalabs/codegen-sandbox/internal/metrics/health"
 	"github.com/altairalabs/codegen-sandbox/internal/scrub"
 	"github.com/altairalabs/codegen-sandbox/internal/tracing"
 	"github.com/altairalabs/codegen-sandbox/internal/verify"
@@ -18,7 +19,11 @@ import (
 // "denied" + "timeout" are out of reach from a generic wrapper (they live
 // inside specific handlers like Bash), so those call sites increment the
 // specialised counters themselves.
-func metricsMiddleware(m *metrics.Metrics, tool string, ws *workspace.Workspace, handler mcpserver.ToolHandlerFunc) mcpserver.ToolHandlerFunc {
+//
+// When a *health.Tracker is provided, every call also feeds the agent-health
+// rolling windows (tool_error_rate gauge + tool_repetition burst detector).
+// The tracker is nil-safe; a nil tracker is a no-op.
+func metricsMiddleware(m *metrics.Metrics, tool string, ws *workspace.Workspace, tracker *health.Tracker, handler mcpserver.ToolHandlerFunc) mcpserver.ToolHandlerFunc {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		start := time.Now()
 		res, err := handler(ctx, req)
@@ -27,6 +32,7 @@ func metricsMiddleware(m *metrics.Metrics, tool string, ws *workspace.Workspace,
 		status := deriveStatus(res, err)
 		language := detectLanguage(ws)
 		m.ToolCall(tool, status, language, dur)
+		tracker.Observe(tool, status, health.HashArgs(tool, req.Params.Arguments))
 		return res, err
 	}
 }
@@ -71,6 +77,7 @@ func detectLanguage(ws *workspace.Workspace) string {
 type observabilityRegistrar struct {
 	inner   *mcpserver.MCPServer
 	metrics *metrics.Metrics
+	health  *health.Tracker
 	tracer  *tracing.Tracer
 	ws      *workspace.Workspace
 }
@@ -79,7 +86,7 @@ type observabilityRegistrar struct {
 // for the composition order rationale.
 func (r *observabilityRegistrar) AddTool(tool mcp.Tool, handler mcpserver.ToolHandlerFunc) {
 	scrubbed := scrubbingHandler(handler, r.metrics)
-	instrumented := metricsMiddleware(r.metrics, tool.Name, r.ws, scrubbed)
+	instrumented := metricsMiddleware(r.metrics, tool.Name, r.ws, r.health, scrubbed)
 	traced := tracingMiddleware(r.tracer, tool.Name, r.ws, instrumented)
 	r.inner.AddTool(tool, traced)
 }

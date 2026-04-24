@@ -48,6 +48,11 @@ func HandleRunLint(deps *Deps) func(context.Context, mcp.CallToolRequest) (*mcp.
 		if err != nil {
 			body += fmt.Sprintf("(lint incomplete: %v)\n", err)
 		}
+		// Agent-health: zero findings + no error is the green path that
+		// stamps the last-green timestamp.
+		if err == nil && len(findings) == 0 {
+			deps.Health.ObserveGreen()
+		}
 		return TextResult(body), nil
 	}
 }

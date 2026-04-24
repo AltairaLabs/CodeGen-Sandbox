@@ -57,6 +57,11 @@ type Metrics struct {
 	scrubHits          *prometheus.CounterVec
 	scrubBytesRedacted prometheus.Counter
 	pathViolations     prometheus.Counter
+
+	agentTestFailureStreak      prometheus.Gauge
+	agentTimeSinceLastGreenSecs prometheus.Gauge
+	agentToolErrorRate          prometheus.Gauge
+	agentToolRepetitionTotal    *prometheus.CounterVec
 }
 
 // New constructs a Metrics with a fresh registry, registering the runtime
@@ -111,6 +116,10 @@ func (m *Metrics) buildCounters() {
 	)
 	m.scrubBytesRedacted = prometheus.NewCounter(prometheus.CounterOpts{Name: "sandbox_scrub_bytes_redacted_total", Help: "Total bytes replaced by the scrub middleware."})
 	m.pathViolations = prometheus.NewCounter(prometheus.CounterOpts{Name: "sandbox_path_violations_total", Help: "Count of path-containment rejections across filesystem tools."})
+	m.agentToolRepetitionTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{Name: "sandbox_agent_tool_repetition_total", Help: "Count of (tool, args) repetition bursts detected within the configured window."},
+		[]string{"tool"},
+	)
 }
 
 func (m *Metrics) buildHistograms() {
@@ -133,6 +142,18 @@ func (m *Metrics) buildGauges() {
 		[]string{"endpoint"},
 	)
 	m.sseStreams = prometheus.NewGauge(prometheus.GaugeOpts{Name: "sandbox_sse_streams", Help: "Open Server-Sent-Events streams on /api/events."})
+	m.agentTestFailureStreak = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "sandbox_agent_test_failure_streak",
+		Help: "Consecutive run_tests invocations whose failure count did not decrease. Reset on decrease or exit=0.",
+	})
+	m.agentTimeSinceLastGreenSecs = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "sandbox_agent_time_since_last_green_seconds",
+		Help: "Seconds since the last run_tests/run_lint/run_typecheck that exited 0. Initialised to 0 on process start so \"never ran\" reads as 0.",
+	})
+	m.agentToolErrorRate = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "sandbox_agent_tool_error_rate",
+		Help: "Errored tool calls divided by total tool calls over the configured rolling window (default 100).",
+	})
 }
 
 // collectors returns every sandbox-owned collector so New can register them
@@ -147,6 +168,7 @@ func (m *Metrics) collectors() []prometheus.Collector {
 		m.backgroundShells,
 		m.wsConnections, m.sseStreams,
 		m.denylistHits, m.scrubHits, m.scrubBytesRedacted, m.pathViolations,
+		m.agentTestFailureStreak, m.agentTimeSinceLastGreenSecs, m.agentToolErrorRate, m.agentToolRepetitionTotal,
 	}
 }
 
@@ -342,4 +364,54 @@ func (m *Metrics) PathViolation() {
 		return
 	}
 	m.pathViolations.Inc()
+}
+
+// SetAgentTestFailureStreak updates the consecutive-non-decreasing-failures
+// gauge. Callers clamp negative values at zero before invoking.
+func (m *Metrics) SetAgentTestFailureStreak(n int) {
+	if m == nil {
+		return
+	}
+	if n < 0 {
+		n = 0
+	}
+	m.agentTestFailureStreak.Set(float64(n))
+}
+
+// SetAgentTimeSinceLastGreenSeconds updates the time-since-last-green gauge.
+// Initialised to 0 on process start so "never ran" reads as 0 rather than a
+// misleading giant number.
+func (m *Metrics) SetAgentTimeSinceLastGreenSeconds(secs float64) {
+	if m == nil {
+		return
+	}
+	if secs < 0 {
+		secs = 0
+	}
+	m.agentTimeSinceLastGreenSecs.Set(secs)
+}
+
+// SetAgentToolErrorRate updates the rolling-window tool error rate gauge.
+// Values outside [0,1] are clamped so the gauge stays a valid ratio.
+func (m *Metrics) SetAgentToolErrorRate(rate float64) {
+	if m == nil {
+		return
+	}
+	if rate < 0 {
+		rate = 0
+	}
+	if rate > 1 {
+		rate = 1
+	}
+	m.agentToolErrorRate.Set(rate)
+}
+
+// IncAgentToolRepetition increments the (tool) repetition-burst counter. The
+// tool label is drawn from the closed MCP tool list, so cardinality stays
+// bounded.
+func (m *Metrics) IncAgentToolRepetition(tool string) {
+	if m == nil {
+		return
+	}
+	m.agentToolRepetitionTotal.WithLabelValues(tool).Inc()
 }

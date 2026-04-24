@@ -7,6 +7,7 @@ import (
 
 	"github.com/altairalabs/codegen-sandbox/internal/lsp"
 	"github.com/altairalabs/codegen-sandbox/internal/metrics"
+	"github.com/altairalabs/codegen-sandbox/internal/metrics/health"
 	"github.com/altairalabs/codegen-sandbox/internal/secrets"
 	"github.com/altairalabs/codegen-sandbox/internal/tools"
 	"github.com/altairalabs/codegen-sandbox/internal/tracing"
@@ -26,6 +27,12 @@ type Config struct {
 	// every MCP tool invocation emits an OTel span. A nil Tracer is the
 	// no-op path — see internal/tracing for the nil-receiver contract.
 	Tracer *tracing.Tracer
+
+	// HealthTracker, when non-nil, receives a per-tool Observe hook from the
+	// middleware plus ObserveGreen / ObserveTestResult hooks from the verify
+	// tools. Nil disables agent-health instrumentation (every Tracker method
+	// is nil-safe).
+	HealthTracker *health.Tracker
 }
 
 // Server is the codegen sandbox MCP server.
@@ -65,7 +72,7 @@ func NewWithConfig(ws *workspace.Workspace, m *metrics.Metrics, cfg Config) (*Se
 	// Every tool handler is wrapped with scrub + metrics + tracing middleware
 	// through the registrar. See observabilityRegistrar for the composition
 	// order rationale.
-	reg := &observabilityRegistrar{inner: s.mcp, metrics: m, tracer: cfg.Tracer, ws: s.ws}
+	reg := &observabilityRegistrar{inner: s.mcp, metrics: m, health: cfg.HealthTracker, tracer: cfg.Tracer, ws: s.ws}
 	deps := &tools.Deps{
 		Workspace:   s.ws,
 		Tracker:     s.tracker,
@@ -74,6 +81,7 @@ func NewWithConfig(ws *workspace.Workspace, m *metrics.Metrics, cfg Config) (*Se
 		LSPRegistry: s.lspReg,
 		Secrets:     secrets.New(cfg.SecretsDir, os.Environ()),
 		Metrics:     m,
+		Health:      cfg.HealthTracker,
 	}
 	tools.RegisterRead(reg, deps)
 	tools.RegisterWrite(reg, deps)
