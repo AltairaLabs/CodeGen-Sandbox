@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -49,11 +50,15 @@ func TestRealEslint_ParsesOutput(t *testing.T) {
   "type": "module"
 }
 `), 0o644))
-	// eslint flat config: one rule, no plugins, no globals. Enough to
-	// fire `no-var` on a `var` declaration.
+	// eslint flat config: one rule, no plugins, no globals. The `files`
+	// pattern is explicit so eslint v9 picks up bad.js — without it, the
+	// config applies to nothing and `eslint .` exits 2 with
+	// "no matching files".
 	require.NoError(t, os.WriteFile(filepath.Join(root, "eslint.config.mjs"),
 		[]byte(`export default [
   {
+    files: ["**/*.js"],
+    languageOptions: { ecmaVersion: "latest", sourceType: "module" },
     rules: {
       "no-var": "error",
     },
@@ -71,12 +76,18 @@ func TestRealEslint_ParsesOutput(t *testing.T) {
 	// affects the parsed surface.
 	cmd := exec.Command("eslint", ".", "--format=compact")
 	cmd.Dir = root
+	// Capture stderr separately so an exit>=2 diagnosis (config invalid,
+	// missing dep, etc) surfaces in the test failure instead of being
+	// swallowed. eslint emits findings on stdout and diagnostics on
+	// stderr, so this split matches production behaviour.
+	var stderrBuf strings.Builder
+	cmd.Stderr = &stderrBuf
 	stdout, runErr := cmd.Output()
 	// eslint exits 1 when findings exist — that's the expected path here.
 	// exit >= 2 is a real error (config invalid, etc).
 	if runErr != nil {
 		if ee, ok := runErr.(*exec.ExitError); !ok || ee.ExitCode() >= 2 {
-			t.Fatalf("eslint failed: %v", runErr)
+			t.Fatalf("eslint failed: %v\nstderr:\n%s\nstdout:\n%s", runErr, stderrBuf.String(), stdout)
 		}
 	}
 

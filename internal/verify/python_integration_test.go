@@ -48,8 +48,11 @@ version = "0.0.0"
 [tool.ruff.lint]
 select = ["F"]
 `), 0o644))
+	// NOTE: no trailing comment — ruff's `# noqa` directive would
+	// suppress the very rule we want to fire, even when it looks like
+	// a descriptive trailing comment to the reader.
 	require.NoError(t, os.WriteFile(filepath.Join(root, "bad.py"),
-		[]byte("import os  # noqa: trailing comment doesn't suppress F401 here\n"), 0o644))
+		[]byte("import os\n"), 0o644))
 
 	cmd := exec.Command("ruff", "check", ".")
 	cmd.Dir = root
