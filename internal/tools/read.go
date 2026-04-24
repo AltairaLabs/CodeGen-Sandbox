@@ -17,10 +17,11 @@ const defaultReadLimit = 2000
 // RegisterRead registers the Read tool with the given MCP server.
 func RegisterRead(s ToolAdder, deps *Deps) {
 	tool := mcp.NewTool("Read",
-		mcp.WithDescription("Read a file from the workspace. Returns cat -n style line-numbered text."),
+		mcp.WithDescription("Read a file from the workspace. Returns cat -n style line-numbered text. In multi-workspace mode pass `workspace` to pick one."),
 		mcp.WithString("file_path", mcp.Required(), mcp.Description("Absolute or workspace-relative path.")),
 		mcp.WithNumber("offset", mcp.Description("1-based line to start at (default 1).")),
 		mcp.WithNumber("limit", mcp.Description("Maximum number of lines to return (default 2000).")),
+		withWorkspaceArg(),
 	)
 	s.AddTool(tool, HandleRead(deps))
 }
@@ -30,12 +31,17 @@ func HandleRead(deps *Deps) func(context.Context, mcp.CallToolRequest) (*mcp.Cal
 	return func(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		args, _ := req.Params.Arguments.(map[string]any)
 
+		ws, errRes := ResolveWorkspace(deps, args)
+		if errRes != nil {
+			return errRes, nil
+		}
+
 		filePath, offset, limit, errRes := parseReadArgs(args)
 		if errRes != nil {
 			return errRes, nil
 		}
 
-		abs, errRes := resolveReadPath(deps, filePath)
+		abs, errRes := resolveReadPath(ws, deps, filePath)
 		if errRes != nil {
 			return errRes, nil
 		}
@@ -67,8 +73,8 @@ func parseReadArgs(args map[string]any) (filePath string, offset, limit int, err
 	return filePath, offset, limit, nil
 }
 
-func resolveReadPath(deps *Deps, filePath string) (string, *mcp.CallToolResult) {
-	abs, err := deps.Workspace.Resolve(filePath)
+func resolveReadPath(ws *workspace.Workspace, deps *Deps, filePath string) (string, *mcp.CallToolResult) {
+	abs, err := ws.Resolve(filePath)
 	if err != nil {
 		if errors.Is(err, workspace.ErrOutsideWorkspace) {
 			deps.Metrics.PathViolation()

@@ -23,7 +23,8 @@ func main() {
 	enableExec := flag.Bool("enable-exec", false, "mount /api/exec (WebSocket PTY) on -api-addr")
 	enablePortForward := flag.Bool("enable-port-forward", false, "mount /api/port-forward (WebSocket TCP tunnel to loopback) on -api-addr")
 	enableSSH := flag.Bool("enable-ssh", false, "start embedded SSH server on 127.0.0.1 and mount /api/ssh-authorized-keys + /api/ssh-port on -api-addr")
-	root := flag.String("workspace", "/workspace", "workspace root (absolute path)")
+	root := flag.String("workspace", "/workspace", "workspace root (absolute path) for single-workspace mode. Mutually exclusive with -workspaces.")
+	workspaces := flag.String("workspaces", "", "multi-workspace mode: comma-separated list of workspace roots, each optionally prefixed with `name=`. e.g. \"primary=/ws1,extension=/ws2\" or \"/ws1,/ws2\" (names default to filepath.Base). Each tool that touches the filesystem grows an optional `workspace` arg the agent uses to pick one; omitting it in single-workspace mode uses the sole workspace, omitting it in multi-workspace mode returns an actionable error. Mutually exclusive with -workspace.")
 	devMode := flag.Bool("dev-mode", false, "trust-no-headers dev fallback: inject a placeholder identity when forwarded headers are absent")
 	secretsDir := flag.String("secrets-dir", "", "directory of one-file-per-secret mounts (e.g. k8s Secret volume). Empty disables the file source; CODEGEN_SANDBOX_SECRET_* env vars still work.")
 	readonly := flag.Bool("readonly", false, "scoped-exploration mode: register only read tools (Read, Glob, Grep, search_code, find_definition / find_references, snapshot_list / snapshot_diff, last_test_failures, tests_covering, secret). Mutating tools (Write, Edit, Bash, run_*, snapshot_create / snapshot_restore, rename_symbol, AST edits, render_*) are not registered, and tools/list reflects this.")
@@ -41,6 +42,7 @@ func main() {
 		MetricsToolRepetitionThresh: *metricsToolRepetitionThreshold,
 		MetricsErrorRateWindow:      *metricsErrorRateWindow,
 		WorkspaceRoot:               *root,
+		WorkspacesSpec:              *workspaces,
 		DevMode:                     *devMode,
 		EnableAPI:                   *enableAPI,
 		EnableExec:                  *enableExec,

@@ -15,8 +15,20 @@ import (
 
 // Deps carries the dependencies a tool handler needs.
 type Deps struct {
-	// Workspace is the sandbox workspace used for path containment.
+	// Workspace is the default sandbox workspace — the sole workspace
+	// in single-workspace mode, and the first entry in Workspaces in
+	// multi-workspace mode. Kept for call sites (verify, LSP, AST,
+	// snapshots, search, render) that predate multi-workspace support
+	// and have not been extended to accept a `workspace` argument yet.
+	// Polyglot-aware new code should resolve via ResolveWorkspace
+	// instead, which respects the agent's optional `workspace` arg.
 	Workspace *workspace.Workspace
+	// Workspaces is the full multi-workspace set when -workspaces is
+	// configured. In single-workspace mode this contains exactly one
+	// workspace (== Workspace). ResolveWorkspace is the ergonomic
+	// entry point for tool handlers that accept the `workspace` arg.
+	// May be nil in tests that only exercise single-workspace paths.
+	Workspaces *workspace.Set
 	// Tracker records which files have been read in the current session.
 	Tracker *workspace.ReadTracker
 	// Shells hosts background bash shells for BashOutput and KillShell.

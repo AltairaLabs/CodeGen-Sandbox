@@ -15,9 +15,10 @@ const (
 // RegisterRunTypecheck registers the run_typecheck tool.
 func RegisterRunTypecheck(s ToolAdder, deps *Deps) {
 	tool := mcp.NewTool("run_typecheck",
-		mcp.WithDescription("Run the project's type checker. Project type is detected from the workspace root (Go: `go vet`, Node: project tsc, Rust: cargo check; Python has no first-class typecheck wired). In a polyglot workspace pass `language` to pick one. Returns combined stdout+stderr plus a trailing 'exit: N' line."),
+		mcp.WithDescription("Run the project's type checker. Project type is detected from the workspace root (Go: `go vet`, Node: project tsc, Rust: cargo check; Python has no first-class typecheck wired). In a polyglot workspace pass `language` to pick one. In multi-workspace mode pass `workspace` to pick one. Returns combined stdout+stderr plus a trailing 'exit: N' line."),
 		mcp.WithNumber("timeout", mcp.Description(fmt.Sprintf("Timeout in seconds. Default %d, clamped to a maximum of %d.", defaultRunTypecheckTimeoutSec, maxRunTypecheckTimeoutSec))),
 		withLanguageArg(),
+		withWorkspaceArg(),
 	)
 	s.AddTool(tool, HandleRunTypecheck(deps))
 }
@@ -26,7 +27,11 @@ func RegisterRunTypecheck(s ToolAdder, deps *Deps) {
 func HandleRunTypecheck(deps *Deps) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		args, _ := req.Params.Arguments.(map[string]any)
-		det, errRes := dispatchByLanguage(deps, args)
+		ws, errRes := ResolveWorkspace(deps, args)
+		if errRes != nil {
+			return errRes, nil
+		}
+		det, errRes := dispatchByLanguage(ws, args)
 		if errRes != nil {
 			return errRes, nil
 		}
@@ -39,7 +44,7 @@ func HandleRunTypecheck(deps *Deps) func(context.Context, mcp.CallToolRequest) (
 			}
 		}
 
-		res, err := runVerifyCmd(ctx, det.TypecheckCmd(), deps.Workspace.Root(), timeoutSec)
+		res, err := runVerifyCmd(ctx, det.TypecheckCmd(), ws.Root(), timeoutSec)
 		if err != nil {
 			return ErrorResult("run_typecheck: %v", err), nil
 		}

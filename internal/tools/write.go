@@ -15,9 +15,10 @@ import (
 // RegisterWrite registers the Write tool.
 func RegisterWrite(s ToolAdder, deps *Deps) {
 	tool := mcp.NewTool("Write",
-		mcp.WithDescription("Write a file. Overwriting an existing file requires a prior Read."),
+		mcp.WithDescription("Write a file. Overwriting an existing file requires a prior Read. In multi-workspace mode pass `workspace` to pick one."),
 		mcp.WithString("file_path", mcp.Required()),
 		mcp.WithString("content", mcp.Required()),
+		withWorkspaceArg(),
 	)
 	s.AddTool(tool, HandleWrite(deps))
 }
@@ -27,12 +28,17 @@ func HandleWrite(deps *Deps) func(context.Context, mcp.CallToolRequest) (*mcp.Ca
 	return func(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		args, _ := req.Params.Arguments.(map[string]any)
 
+		ws, errRes := ResolveWorkspace(deps, args)
+		if errRes != nil {
+			return errRes, nil
+		}
+
 		filePath, content, errRes := parseWriteArgs(args)
 		if errRes != nil {
 			return errRes, nil
 		}
 
-		abs, err := deps.Workspace.Resolve(filePath)
+		abs, err := ws.Resolve(filePath)
 		if err != nil {
 			if errors.Is(err, workspace.ErrOutsideWorkspace) {
 				deps.Metrics.PathViolation()

@@ -30,8 +30,15 @@ const errParse = "parse error: %v"
 // returns (abs, source, language, tree) ready for tool-specific manipulation.
 // The bool return distinguishes the "an error result has already been built"
 // path from the happy path (nil result, ok=true).
+//
+// The AST tools predate multi-workspace support (#23); they resolve
+// against deps.Workspace (the default / sole workspace) rather than a
+// hint-supplied workspace. Extending them to accept a `workspace` arg
+// is a follow-up — the Deps.Workspace field continues to point at the
+// default workspace in multi-workspace mode so this call site keeps
+// working.
 func astLoadTarget(deps *Deps, filePath string) (abs string, source []byte, lang ast.Language, tree ast.Tree, errRes *mcp.CallToolResult) {
-	abs, errRes = resolveEditTarget(deps, filePath)
+	abs, errRes = resolveEditTarget(deps.Workspace, deps, filePath)
 	if errRes != nil {
 		return "", nil, nil, nil, errRes
 	}

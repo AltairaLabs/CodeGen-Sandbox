@@ -15,6 +15,13 @@ var ErrOutsideWorkspace = errors.New("path is outside workspace root")
 // Workspace is a container-scoped filesystem boundary.
 type Workspace struct {
 	root string // canonical absolute, symlinks resolved
+	// name is the short identifier used by multi-workspace sandboxes to
+	// pick this workspace via the per-tool `workspace` argument. Empty
+	// when the Workspace was constructed outside a Set — callers
+	// (workspace.NewSet, workspace.NewSingletonSet) populate it; the
+	// single-workspace call sites that predate multi-workspace support
+	// leave it empty, which is harmless as they don't consult Name().
+	name string
 }
 
 // New constructs a Workspace rooted at the given absolute directory.
@@ -39,6 +46,14 @@ func New(root string) (*Workspace, error) {
 // Root returns the canonical absolute workspace root.
 func (w *Workspace) Root() string {
 	return w.root
+}
+
+// Name returns the short identifier this workspace was registered under in
+// its containing Set, or "" when constructed outside a Set. Callers that
+// care about multi-workspace semantics read Name to attribute output
+// (e.g. "grep findings from workspace <name>").
+func (w *Workspace) Name() string {
+	return w.name
 }
 
 // Resolve returns the canonical absolute form of p, guaranteed to live inside

@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"reflect"
+	"strings"
 	"time"
 
 	"github.com/altairalabs/codegen-sandbox/internal/api"
@@ -36,10 +37,16 @@ const (
 
 // Config bundles all runtime options for Run.
 type Config struct {
-	Addr              string
-	APIAddr           string
-	MetricsAddr       string
-	WorkspaceRoot     string
+	Addr          string
+	APIAddr       string
+	MetricsAddr   string
+	WorkspaceRoot string
+	// WorkspacesSpec is the raw `-workspaces` flag value (comma-separated,
+	// optional `name=` prefix per entry). Empty means single-workspace
+	// mode — WorkspaceRoot is used instead. Mutually exclusive with a
+	// non-default WorkspaceRoot: if both are non-empty and WorkspaceRoot
+	// isn't "/workspace", Run errors out.
+	WorkspacesSpec    string
 	DevMode           bool
 	EnableAPI         bool
 	EnableExec        bool
@@ -79,9 +86,18 @@ func (c Config) apiEnabled() bool {
 // listener on cfg.MetricsAddr (if set). All listeners drain on ctx
 // cancellation within a bounded grace window.
 func Run(ctx context.Context, cfg Config) error {
-	ws, err := workspace.New(cfg.WorkspaceRoot)
+	set, err := buildWorkspaceSet(cfg)
 	if err != nil {
 		return fmt.Errorf("workspace: %w", err)
+	}
+	// The default workspace (first or only) is passed through to single-
+	// workspace-only tools (AST, LSP, snapshot, render, search, watch) via
+	// server.Config.Workspace. See internal/tools.Deps for the
+	// multi-workspace-aware tools that consult the Set instead.
+	defaultWs := set.All()[0]
+	if set.Len() > 1 {
+		log.Printf("codegen-sandbox multi-workspace mode: %d workspaces configured (%s)",
+			set.Len(), strings.Join(set.SortedNames(), ", "))
 	}
 	metricsSurface, err := maybeBuildMetrics(cfg)
 	if err != nil {
@@ -96,7 +112,7 @@ func Run(ctx context.Context, cfg Config) error {
 		log.Printf("codegen-sandbox tracing enabled (otlp endpoint=%s)", cfg.OTLPEndpoint)
 	}
 
-	listeners, closer, err := buildListeners(ws, cfg, metricsSurface, healthTracker, tracer)
+	listeners, closer, err := buildListeners(defaultWs, set, cfg, metricsSurface, healthTracker, tracer)
 	if err != nil {
 		return err
 	}
@@ -105,7 +121,7 @@ func Run(ctx context.Context, cfg Config) error {
 	gaugeCtx, cancelGauge := context.WithCancel(context.Background())
 	defer cancelGauge()
 	if metricsSurface != nil {
-		go workspaceGaugeLoop(gaugeCtx, metricsSurface, ws, listeners.sandbox.Shells())
+		go workspaceGaugeLoop(gaugeCtx, metricsSurface, defaultWs, listeners.sandbox.Shells())
 	}
 	if healthTracker != nil {
 		go healthGaugeLoop(gaugeCtx, healthTracker)
@@ -116,6 +132,61 @@ func Run(ctx context.Context, cfg Config) error {
 		return err
 	}
 	return shutdownAll(listeners.servers(), closer, errChans, tracerShutdown)
+}
+
+// buildWorkspaceSet interprets Config.WorkspacesSpec + Config.WorkspaceRoot
+// into a Set. Single-workspace mode (WorkspacesSpec == "") builds a
+// singleton set from WorkspaceRoot; multi-workspace mode parses the
+// comma-separated spec, resolves each entry via workspace.New, and
+// deduplicates names. WorkspaceRoot != "/workspace" combined with a
+// non-empty WorkspacesSpec is rejected (mutually exclusive) so operators
+// can't quietly configure one while ignoring the other.
+func buildWorkspaceSet(cfg Config) (*workspace.Set, error) {
+	if cfg.WorkspacesSpec == "" {
+		ws, err := workspace.New(cfg.WorkspaceRoot)
+		if err != nil {
+			return nil, err
+		}
+		return workspace.NewSingletonSet(ws), nil
+	}
+	if cfg.WorkspaceRoot != "" && cfg.WorkspaceRoot != "/workspace" {
+		return nil, fmt.Errorf("-workspace %q and -workspaces %q are mutually exclusive; use one", cfg.WorkspaceRoot, cfg.WorkspacesSpec)
+	}
+	entries, err := parseWorkspacesSpec(cfg.WorkspacesSpec)
+	if err != nil {
+		return nil, err
+	}
+	return workspace.NewSet(entries)
+}
+
+// parseWorkspacesSpec parses "name=/path,name=/path" or "/path,/path".
+// Trailing commas and leading / trailing whitespace per entry are
+// tolerated; empty entries are skipped so operators can add a trailing
+// comma without breaking parse.
+func parseWorkspacesSpec(spec string) ([]workspace.Entry, error) {
+	var out []workspace.Entry
+	for _, raw := range strings.Split(spec, ",") {
+		raw = strings.TrimSpace(raw)
+		if raw == "" {
+			continue
+		}
+		name, path, found := strings.Cut(raw, "=")
+		if !found {
+			// No "name=" prefix — the whole entry is the path.
+			path = name
+			name = ""
+		}
+		path = strings.TrimSpace(path)
+		name = strings.TrimSpace(name)
+		if path == "" {
+			return nil, fmt.Errorf("workspaces: empty path in entry %q", raw)
+		}
+		out = append(out, workspace.Entry{Name: name, Root: path})
+	}
+	if len(out) == 0 {
+		return nil, fmt.Errorf("workspaces: no entries parsed from %q", spec)
+	}
+	return out, nil
 }
 
 // listenerBundle groups the three optional listeners + the bound sandbox
@@ -146,8 +217,8 @@ func (l *listenerBundle) serve() []<-chan error {
 // buildListeners constructs every listener the Config asks for and logs
 // them. Packaging the construction here keeps Run's cognitive complexity
 // low.
-func buildListeners(ws *workspace.Workspace, cfg Config, m *metrics.Metrics, h *health.Tracker, tracer *tracing.Tracer) (*listenerBundle, io.Closer, error) {
-	mcpSrv, sandbox, err := buildMCPServer(cfg.Addr, ws, cfg, m, h, tracer)
+func buildListeners(ws *workspace.Workspace, set *workspace.Set, cfg Config, m *metrics.Metrics, h *health.Tracker, tracer *tracing.Tracer) (*listenerBundle, io.Closer, error) {
+	mcpSrv, sandbox, err := buildMCPServer(cfg.Addr, ws, set, cfg, m, h, tracer)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -195,12 +266,13 @@ func maybeBuildHealth(cfg Config, m *metrics.Metrics) *health.Tracker {
 	})
 }
 
-func buildMCPServer(addr string, ws *workspace.Workspace, cfg Config, m *metrics.Metrics, h *health.Tracker, tracer *tracing.Tracer) (*http.Server, *server.Server, error) {
+func buildMCPServer(addr string, ws *workspace.Workspace, set *workspace.Set, cfg Config, m *metrics.Metrics, h *health.Tracker, tracer *tracing.Tracer) (*http.Server, *server.Server, error) {
 	srv, err := server.NewWithConfig(ws, m, server.Config{
 		SecretsDir:    cfg.SecretsDir,
 		Tracer:        tracer,
 		HealthTracker: h,
 		ReadOnly:      cfg.ReadOnly,
+		Workspaces:    set,
 	})
 	if err != nil {
 		return nil, nil, fmt.Errorf("server: %w", err)
