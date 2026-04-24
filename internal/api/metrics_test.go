@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/altairalabs/codegen-sandbox/internal/metrics"
 	"github.com/stretchr/testify/assert"
@@ -109,7 +110,12 @@ func TestWithMetrics_StatusRecorderForwardsHijack(t *testing.T) {
 	defer func() { _ = resp.Body.Close() }()
 	_, _ = io.Copy(io.Discard, resp.Body)
 
-	body := scrapeMetrics(t, m)
-	assert.True(t, strings.Contains(body, `sandbox_api_http_requests_total{route="/api/exec",status="101"} 1`),
-		"missing 101 counter; got %q", body)
+	// The server's metrics recording runs in its handler goroutine AFTER
+	// the hijacked conn has been closed, so the test's http.Get can return
+	// before the counter lands. Poll the scrape until the 101 bucket
+	// materialises; 2s is plenty of headroom for a loopback request.
+	wanted := `sandbox_api_http_requests_total{route="/api/exec",status="101"} 1`
+	require.Eventually(t, func() bool {
+		return strings.Contains(scrapeMetrics(t, m), wanted)
+	}, 2*time.Second, 20*time.Millisecond, "missing 101 counter after 2s")
 }
