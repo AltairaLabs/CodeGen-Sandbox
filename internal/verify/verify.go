@@ -25,7 +25,7 @@ func Detect(root string) Detector {
 	case fileExists(filepath.Join(root, "Cargo.toml")):
 		return &rustDetector{root: root}
 	case fileExists(filepath.Join(root, "package.json")):
-		return &nodeDetector{root: root}
+		return newNodeDetector(root)
 	case fileExists(filepath.Join(root, "pyproject.toml")) || fileExists(filepath.Join(root, "setup.py")):
 		return &pythonDetector{root: root}
 	}
@@ -45,6 +45,11 @@ func AllDetectors() []Detector {
 	return []Detector{
 		&goDetector{},
 		&rustDetector{},
+		// Zero-value nodeDetector is fine for the language-→argv lookups
+		// AllDetectors is used for (LSPCommand, FormatCheckCmd with a
+		// literal file arg). It has no pm / scripts populated — which is
+		// only relevant to per-workspace *Cmd methods that Detect() is
+		// used for.
 		&nodeDetector{},
 		&pythonDetector{},
 	}
