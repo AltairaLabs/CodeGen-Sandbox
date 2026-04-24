@@ -30,6 +30,9 @@ type Config struct {
 	EnableExec        bool
 	EnablePortForward bool
 	EnableSSH         bool
+	// SecretsDir enables the file source of the `secret` tool. See
+	// internal/secrets for the full contract.
+	SecretsDir string
 }
 
 // apiEnabled reports whether any human-facing API surface is requested.
@@ -45,7 +48,7 @@ func Run(ctx context.Context, cfg Config) error {
 	if err != nil {
 		return fmt.Errorf("workspace: %w", err)
 	}
-	mcpSrv, err := buildMCPServer(cfg.Addr, ws)
+	mcpSrv, err := buildMCPServer(cfg.Addr, ws, cfg)
 	if err != nil {
 		return err
 	}
@@ -71,8 +74,8 @@ func Run(ctx context.Context, cfg Config) error {
 	return shutdownAll(mcpSrv, apiSrv, apiCloser, mcpErr, apiErr)
 }
 
-func buildMCPServer(addr string, ws *workspace.Workspace) (*http.Server, error) {
-	srv, err := server.New(ws)
+func buildMCPServer(addr string, ws *workspace.Workspace, cfg Config) (*http.Server, error) {
+	srv, err := server.NewWithConfig(ws, server.Config{SecretsDir: cfg.SecretsDir})
 	if err != nil {
 		return nil, fmt.Errorf("server: %w", err)
 	}

@@ -15,12 +15,13 @@ codegen-sandbox -addr=<host:port> -workspace=<path>
 |---|---|---|
 | `-addr` | `:8080` | HTTP listen address. Bind to `127.0.0.1:8080` for host-only access. |
 | `-workspace` | `/workspace` | Absolute path to the agent's workspace root. Must exist and be a directory. |
+| `-secrets-dir` | `""` | Directory of one-file-per-secret mounts (e.g. a Kubernetes `Secret` volume). Empty string disables the file source. See the [`secret` tool](/tools/secret/). |
 
 ## Environment variables
 
 The sandbox itself has no required runtime env vars. It inherits the full environment from `docker run`, but none of the shipped tools (`Read` / `Edit` / `Bash` / etc.) consult env vars for behaviour. Web-search / fetch configuration happens on the sibling MCP server you wire in alongside — see [Non-sandbox tools](/concepts/non-sandbox-tools/).
 
-[Secret scrubbing](/concepts/secret-scrubbing/) redacts well-known shapes from tool OUTPUT, but does not redact env vars themselves. Only pass secrets the agent is genuinely expected to consume via `Bash` (e.g. `GITHUB_TOKEN` for `gh` CLI calls).
+[Secret scrubbing](/concepts/secret-scrubbing/) redacts well-known shapes from tool OUTPUT, but does not redact env vars themselves. For operator-provided credentials, prefer the [`secret` tool](/tools/secret/) (file mount or `CODEGEN_SANDBOX_SECRET_<NAME>` env var) over placing values directly in the container environment where every `Bash` call inherits them.
 
 ## Docker run options
 

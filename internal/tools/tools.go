@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/altairalabs/codegen-sandbox/internal/lsp"
+	"github.com/altairalabs/codegen-sandbox/internal/secrets"
 	"github.com/altairalabs/codegen-sandbox/internal/workspace"
 	"github.com/mark3labs/mcp-go/mcp"
 	mcpserver "github.com/mark3labs/mcp-go/server"
@@ -27,6 +28,10 @@ type Deps struct {
 	// (workspace, language) pair. May be nil in tests that don't exercise
 	// LSP navigation.
 	LSPRegistry *lsp.Registry
+	// Secrets resolves operator-configured credentials for the `secret`
+	// tool. Nil-safe: handlers return a clear error when unset so the
+	// sandbox stays useful in workspaces where no secrets are configured.
+	Secrets *secrets.Store
 }
 
 // ErrorResult wraps a user-visible message as an MCP error result.

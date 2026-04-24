@@ -3,13 +3,23 @@ package server
 
 import (
 	"net/http"
+	"os"
 
 	"github.com/altairalabs/codegen-sandbox/internal/lsp"
+	"github.com/altairalabs/codegen-sandbox/internal/secrets"
 	"github.com/altairalabs/codegen-sandbox/internal/tools"
 	"github.com/altairalabs/codegen-sandbox/internal/verify"
 	"github.com/altairalabs/codegen-sandbox/internal/workspace"
 	mcpserver "github.com/mark3labs/mcp-go/server"
 )
+
+// Config bundles the knobs New accepts beyond the workspace.
+type Config struct {
+	// SecretsDir is the directory hosting one-file-per-secret mounts
+	// (e.g. a k8s Secret volume). Empty string disables the file source;
+	// CODEGEN_SANDBOX_SECRET_* env vars still work.
+	SecretsDir string
+}
 
 // Server is the codegen sandbox MCP server.
 type Server struct {
@@ -20,8 +30,13 @@ type Server struct {
 	lspReg  *lsp.Registry
 }
 
-// New constructs a Server bound to the given workspace.
+// New constructs a Server bound to the given workspace with default config.
 func New(ws *workspace.Workspace) (*Server, error) {
+	return NewWithConfig(ws, Config{})
+}
+
+// NewWithConfig constructs a Server bound to the given workspace and config.
+func NewWithConfig(ws *workspace.Workspace, cfg Config) (*Server, error) {
 	mcpSrv := mcpserver.NewMCPServer(
 		"codegen-sandbox",
 		"0.1.0",
@@ -46,6 +61,7 @@ func New(ws *workspace.Workspace) (*Server, error) {
 		Shells:      tools.NewShellRegistry(),
 		TestResults: tools.NewTestResultStore(),
 		LSPRegistry: s.lspReg,
+		Secrets:     secrets.New(cfg.SecretsDir, os.Environ()),
 	}
 	tools.RegisterRead(reg, deps)
 	tools.RegisterWrite(reg, deps)
@@ -63,6 +79,7 @@ func New(ws *workspace.Workspace) (*Server, error) {
 	tools.RegisterSearchCode(reg, deps)
 	tools.RegisterASTEdits(reg, deps)
 	tools.RegisterLSPTools(reg, deps)
+	tools.RegisterSecrets(reg, deps)
 	// Web tools (WebFetch / WebSearch) are NOT registered here. They are
 	// stateless and don't need the sandbox's filesystem or process
 	// namespace, so operators hook up vendor MCP servers alongside this
