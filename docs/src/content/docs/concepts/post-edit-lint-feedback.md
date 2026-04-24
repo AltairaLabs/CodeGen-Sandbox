@@ -76,3 +76,9 @@ probe.go:5:3:errcheck: Error return value of `os.WriteFile` is not checked
 ```
 
 The agent can now fix the violation in the next Edit without needing to invoke `run_lint`.
+
+## Sibling: post-edit format check
+
+For languages whose lint path doesn't already cover formatting drift (Python, Node, Rust), Edit runs a separate per-file format check after the lint section. It uses the detector's `FormatCheckCmd(file)` and renders any diff under a `--- format ---` header. Go's `FormatCheckCmd` returns nil — its golangci-lint default set already covers gofmt/gofumpt, so running rustfmt's equivalent a second time would just print the same thing.
+
+Same contract as lint: best-effort, never fails Edit, surfaces `post-edit format: <binary> not found on PATH` when the formatter advertised by the detector isn't installed. See [Edit](/tools/edit/#post-edit-format-check) for the per-language argv.
