@@ -35,9 +35,23 @@ fail() {
 # `data: /message...` frame. Sets $SESSION + $SSE_PID. Issues the LSP-
 # style initialize + initialized handshake. Fails fast (exit 1) on any
 # step.
+#
+# IMPORTANT: also initialises $ID_FILE in the PARENT shell so the
+# request-id counter persists across `mcp_call` invocations. mcp_call
+# runs `_mcp_send` inside `$()` (a subshell); if ID_FILE were lazy-
+# created inside `_mcp_send`, every $() would start a fresh counter
+# and the second call would re-use id=100, collide with the first
+# call's response in the SSE stream, and silently return wrong content.
 mcp_open_session() {
   : "${ADDR:?mcp_open_session requires ADDR}"
   : "${SSE_FILE:?mcp_open_session requires SSE_FILE}"
+
+  # Allocate the request-id counter file in the parent shell so the
+  # path is inherited by every $(mcp_call ...) subshell.
+  if [[ -z "${ID_FILE:-}" ]]; then
+    ID_FILE=$(mktemp -t codegen-mcp-id.XXXXXX)
+    echo 100 > "$ID_FILE"
+  fi
 
   for _ in $(seq 1 20); do
     if curl -sS -o /dev/null --max-time 1 "http://$ADDR/sse" 2>/dev/null; then
@@ -81,10 +95,11 @@ mcp_close_session() {
 _mcp_send() {
   local tool="$1"
   local args_json="$2"
-  if [[ -z "${ID_FILE:-}" ]]; then
-    ID_FILE=$(mktemp -t codegen-mcp-id.XXXXXX)
-    echo 100 > "$ID_FILE"
-  fi
+  # ID_FILE is allocated by mcp_open_session in the parent shell so the
+  # path persists across $(mcp_call ...) subshells. If a caller forgot
+  # to call mcp_open_session, fail loudly rather than silently wedging
+  # the request-id counter at 100.
+  : "${ID_FILE:?_mcp_send requires ID_FILE — call mcp_open_session first}"
   local id
   id=$(cat "$ID_FILE")
   echo $((id + 1)) > "$ID_FILE"
