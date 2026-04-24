@@ -638,3 +638,402 @@ jobs:
           done
 
           kill "$SSE_PID" 2>/dev/null || true
+
+  docker-integration-node:
+    name: Docker image full-stack smoke (Node)
+    runs-on: ubuntu-latest
+    needs: [docker-tools, docker-tools-node]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build tools image (for compose)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.tools
+          push: false
+          load: true
+          tags: codegen-sandbox-tools:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build tools-node image (for compose)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.tools-node
+          push: false
+          load: true
+          tags: codegen-sandbox-tools-node:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Compose Node probe image
+        # Base is node:22-slim (operator-recommended composition for this
+        # layer). Extra installs: bash + curl + jq for the MCP handshake
+        # the host runs against the container (the sandbox listens inside,
+        # the assertions run outside, but `Bash` tool calls need bash
+        # available inside for `description`-style helpers). git is
+        # required by snapshot_create which the base test uses implicitly.
+        run: |
+          set -euo pipefail
+          cat > Dockerfile.integration-probe-node <<'DOCKERFILE'
+          FROM node:22-slim
+          RUN apt-get update \
+              && apt-get install -y --no-install-recommends bash curl git \
+              && rm -rf /var/lib/apt/lists/*
+          COPY --from=codegen-sandbox-tools:ci        /sandbox  /usr/local/bin/
+          COPY --from=codegen-sandbox-tools:ci        /rg       /usr/local/bin/
+          COPY --from=codegen-sandbox-tools-node:ci   /pnpm     /usr/local/bin/
+          COPY --from=codegen-sandbox-tools-node:ci   /bun      /usr/local/bin/
+          WORKDIR /workspace
+          ENTRYPOINT ["/usr/local/bin/sandbox"]
+          DOCKERFILE
+          docker build -f Dockerfile.integration-probe-node -t codegen-sandbox-probe-node:ci .
+
+      - name: Boot sandbox + exercise Node toolchain via MCP
+        # Seeds a package.json with a single `node --test` test (no
+        # external deps needed — Node 22 ships a test runner) and runs it
+        # through run_tests. The script-runner path picks pnpm because
+        # the operator-composed image has pnpm on PATH, exercising the
+        # same PackageManager / ScriptRunner code as a real deployment.
+        run: |
+          set -euo pipefail
+          WS=$(mktemp -d)
+          cat > "$WS/package.json" <<'EOF'
+          {
+            "name": "probe",
+            "version": "0.0.0",
+            "private": true,
+            "scripts": {
+              "test": "node --test probe.test.js"
+            }
+          }
+          EOF
+          cat > "$WS/probe.test.js" <<'EOF'
+          import { test } from 'node:test';
+          import assert from 'node:assert';
+          test('probe passes', () => { assert.strictEqual(1 + 1, 2); });
+          EOF
+
+          docker run -d --rm \
+            --name codegen-probe-node \
+            -p 127.0.0.1:18091:8080 \
+            -v "$WS":/workspace \
+            codegen-sandbox-probe-node:ci \
+              -addr=0.0.0.0:8080 -workspace=/workspace
+          trap 'docker stop codegen-probe-node 2>/dev/null || true' EXIT
+
+          export ADDR=127.0.0.1:18091
+          export SSE_FILE=$(mktemp)
+          source scripts/mcp-helpers.sh
+          trap 'mcp_close_session; docker stop codegen-probe-node 2>/dev/null || true' EXIT
+          mcp_open_session
+
+          say "run_tests over MCP (node --test via pnpm run test)"
+          OUT=$(mcp_call "run_tests" '{"timeout":60}')
+          grep -q 'exit: 0' <<<"$OUT" || fail "run_tests did not report exit 0: $OUT"
+          pass "node --test passed via MCP"
+
+          say "Bash over MCP: pnpm + bun on PATH inside the container"
+          OUT=$(mcp_call "Bash" '{"command":"pnpm --version && bun --version","description":"probe pnpm+bun","timeout":10}')
+          grep -qE '^[0-9]+\.[0-9]+\.[0-9]+' <<<"$OUT" || fail "Bash did not print pnpm/bun version: $OUT"
+          pass "pnpm + bun visible to sandbox"
+
+  docker-integration-python:
+    name: Docker image full-stack smoke (Python)
+    runs-on: ubuntu-latest
+    needs: [docker-tools, docker-tools-python]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build tools image (for compose)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.tools
+          push: false
+          load: true
+          tags: codegen-sandbox-tools:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build tools-python image (for compose)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.tools-python
+          push: false
+          load: true
+          tags: codegen-sandbox-tools-python:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Compose Python probe image
+        # Base is python:3.12-slim (operator-recommended composition).
+        # pytest is installed on top because it is not bundled in the
+        # tools-python layer (only `ruff` is). bash + git for sandbox
+        # helpers (Bash tool / snapshot_create).
+        run: |
+          set -euo pipefail
+          cat > Dockerfile.integration-probe-python <<'DOCKERFILE'
+          FROM python:3.12-slim
+          RUN apt-get update \
+              && apt-get install -y --no-install-recommends bash curl git \
+              && rm -rf /var/lib/apt/lists/* \
+              && pip install --no-cache-dir pytest
+          COPY --from=codegen-sandbox-tools:ci          /sandbox /usr/local/bin/
+          COPY --from=codegen-sandbox-tools:ci          /rg      /usr/local/bin/
+          COPY --from=codegen-sandbox-tools-python:ci   /ruff    /usr/local/bin/
+          WORKDIR /workspace
+          ENTRYPOINT ["/usr/local/bin/sandbox"]
+          DOCKERFILE
+          docker build -f Dockerfile.integration-probe-python -t codegen-sandbox-probe-python:ci .
+
+      - name: Boot sandbox + exercise Python toolchain via MCP
+        run: |
+          set -euo pipefail
+          WS=$(mktemp -d)
+          cat > "$WS/pyproject.toml" <<'EOF'
+          [project]
+          name = "probe"
+          version = "0.0.0"
+
+          [tool.ruff.lint]
+          select = ["F"]
+          EOF
+          cat > "$WS/bad.py" <<'EOF'
+          import os  # F401: unused import
+
+          def add(a: int, b: int) -> int:
+              return a + b
+          EOF
+          cat > "$WS/test_probe.py" <<'EOF'
+          from bad import add
+
+
+          def test_add() -> None:
+              assert add(1, 2) == 3
+          EOF
+
+          docker run -d --rm \
+            --name codegen-probe-python \
+            -p 127.0.0.1:18092:8080 \
+            -v "$WS":/workspace \
+            codegen-sandbox-probe-python:ci \
+              -addr=0.0.0.0:8080 -workspace=/workspace
+          trap 'docker stop codegen-probe-python 2>/dev/null || true' EXIT
+
+          export ADDR=127.0.0.1:18092
+          export SSE_FILE=$(mktemp)
+          source scripts/mcp-helpers.sh
+          trap 'mcp_close_session; docker stop codegen-probe-python 2>/dev/null || true' EXIT
+          mcp_open_session
+
+          say "run_lint over MCP (ruff F401 on bad.py)"
+          OUT=$(mcp_call_allow_error "run_lint" '{"timeout":30}')
+          grep -q 'F401' <<<"$OUT" || fail "run_lint missing F401: $OUT"
+          pass "ruff F401 surfaced via MCP"
+
+          say "run_tests over MCP (pytest)"
+          OUT=$(mcp_call "run_tests" '{"timeout":60}')
+          grep -q 'exit: 0' <<<"$OUT" || fail "pytest did not report exit 0: $OUT"
+          pass "pytest passed via MCP"
+
+  docker-integration-rust:
+    name: Docker image full-stack smoke (Rust)
+    runs-on: ubuntu-latest
+    needs: [docker-tools, docker-tools-rust]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build tools image (for compose)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.tools
+          push: false
+          load: true
+          tags: codegen-sandbox-tools:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build tools-rust image (for compose)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.tools-rust
+          push: false
+          load: true
+          tags: codegen-sandbox-tools-rust:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Compose Rust probe image
+        # Base is rust:1-slim-bookworm (operator-recommended composition).
+        # `rustup component add clippy` brings clippy onto PATH because
+        # rust:slim strips optional components down. bash + git for
+        # sandbox helpers.
+        run: |
+          set -euo pipefail
+          cat > Dockerfile.integration-probe-rust <<'DOCKERFILE'
+          FROM rust:1-slim-bookworm
+          RUN apt-get update \
+              && apt-get install -y --no-install-recommends bash curl git \
+              && rm -rf /var/lib/apt/lists/* \
+              && rustup component add clippy
+          COPY --from=codegen-sandbox-tools:ci         /sandbox        /usr/local/bin/
+          COPY --from=codegen-sandbox-tools:ci         /rg             /usr/local/bin/
+          COPY --from=codegen-sandbox-tools-rust:ci    /rust-analyzer  /usr/local/bin/
+          WORKDIR /workspace
+          ENTRYPOINT ["/usr/local/bin/sandbox"]
+          DOCKERFILE
+          docker build -f Dockerfile.integration-probe-rust -t codegen-sandbox-probe-rust:ci .
+
+      - name: Boot sandbox + exercise Rust toolchain via MCP
+        run: |
+          set -euo pipefail
+          WS=$(mktemp -d)
+          cat > "$WS/Cargo.toml" <<'EOF'
+          [package]
+          name = "probe"
+          version = "0.0.0"
+          edition = "2021"
+
+          [lib]
+          path = "src/lib.rs"
+          EOF
+          mkdir -p "$WS/src"
+          cat > "$WS/src/lib.rs" <<'EOF'
+          pub fn add(a: i32, b: i32) -> i32 { a + b }
+
+          #[cfg(test)]
+          mod tests {
+              use super::add;
+              #[test] fn it_adds() { assert_eq!(add(1, 2), 3); }
+          }
+          EOF
+
+          docker run -d --rm \
+            --name codegen-probe-rust \
+            -p 127.0.0.1:18093:8080 \
+            -v "$WS":/workspace \
+            codegen-sandbox-probe-rust:ci \
+              -addr=0.0.0.0:8080 -workspace=/workspace
+          trap 'docker stop codegen-probe-rust 2>/dev/null || true' EXIT
+
+          export ADDR=127.0.0.1:18093
+          export SSE_FILE=$(mktemp)
+          source scripts/mcp-helpers.sh
+          trap 'mcp_close_session; docker stop codegen-probe-rust 2>/dev/null || true' EXIT
+          mcp_open_session
+
+          # Rust toolchain's first compile in the container pulls crates
+          # + builds std; give it a generous timeout on cold cache.
+          say "run_tests over MCP (cargo test)"
+          OUT=$(mcp_call "run_tests" '{"timeout":300}')
+          grep -q 'exit: 0' <<<"$OUT" || fail "cargo test did not report exit 0: $OUT"
+          pass "cargo test passed via MCP"
+
+          say "run_lint over MCP (cargo clippy --all-targets)"
+          OUT=$(mcp_call "run_lint" '{"timeout":300}')
+          # run_lint emits "N findings" as a trailing summary regardless
+          # of clean / dirty exit. The contract we're asserting is "the
+          # MCP wire surfaced the clippy invocation and returned the
+          # findings summary"; we don't pin the count because clippy's
+          # default lint set may flag std / proc-macro expansion noise.
+          grep -qE '^[0-9]+ findings' <<<"$OUT" || fail "run_lint missing findings summary: $OUT"
+          pass "cargo clippy surfaced via MCP"
+
+  docker-integration-render:
+    name: Docker image full-stack smoke (render)
+    runs-on: ubuntu-latest
+    needs: [docker-tools, docker-tools-render]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build tools image (for compose)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.tools
+          push: false
+          load: true
+          tags: codegen-sandbox-tools:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build tools-render image (for compose)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.tools-render
+          push: false
+          load: true
+          tags: codegen-sandbox-tools-render:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Compose render probe image
+        # Unlike the other tools-* layers, tools-render is debian-based
+        # (dot + mmdc both rely on dynamic libraries / a Node + Chromium
+        # runtime). We use it as the probe base directly and layer in the
+        # sandbox binary + rg from tools. The ENTRYPOINT in tools-render
+        # is a render-specific wrapper, so we override to /usr/local/bin/sandbox.
+        run: |
+          set -euo pipefail
+          cat > Dockerfile.integration-probe-render <<'DOCKERFILE'
+          FROM codegen-sandbox-tools-render:ci
+          USER root
+          RUN apt-get update \
+              && apt-get install -y --no-install-recommends bash curl git \
+              && rm -rf /var/lib/apt/lists/*
+          COPY --from=codegen-sandbox-tools:ci /sandbox /usr/local/bin/
+          COPY --from=codegen-sandbox-tools:ci /rg      /usr/local/bin/
+          WORKDIR /workspace
+          ENTRYPOINT ["/usr/local/bin/sandbox"]
+          DOCKERFILE
+          docker build -f Dockerfile.integration-probe-render -t codegen-sandbox-probe-render:ci .
+
+      - name: Boot sandbox + exercise render tools via MCP
+        run: |
+          set -euo pipefail
+          WS=$(mktemp -d)
+
+          docker run -d --rm \
+            --name codegen-probe-render \
+            -p 127.0.0.1:18094:8080 \
+            -v "$WS":/workspace \
+            codegen-sandbox-probe-render:ci \
+              -addr=0.0.0.0:8080 -workspace=/workspace
+          trap 'docker stop codegen-probe-render 2>/dev/null || true' EXIT
+
+          export ADDR=127.0.0.1:18094
+          export SSE_FILE=$(mktemp)
+          source scripts/mcp-helpers.sh
+          trap 'mcp_close_session; docker stop codegen-probe-render 2>/dev/null || true' EXIT
+          mcp_open_session
+
+          say "render_mermaid over MCP (source → SVG at workspace-relative path)"
+          # render_mermaid / render_dot take the diagram source directly
+          # as the `source` arg plus an `output_path` workspace-relative
+          # target. The sandbox writes the SVG to the workspace; we verify
+          # against the on-disk file in $WS.
+          MERMAID_SRC='graph LR\n  A[client] --> B[sandbox]\n  B --> C[(workspace)]'
+          ARGS=$(jq -cn --arg src "$(printf '%b' "$MERMAID_SRC")" --arg out diagram.svg '{source:$src, output_path:$out}')
+          OUT=$(mcp_call "render_mermaid" "$ARGS")
+          grep -qE 'diagram.svg|wrote' <<<"$OUT" || fail "render_mermaid confirmation missing: $OUT"
+          grep -q '<svg' "$WS/diagram.svg" || fail "diagram.svg missing <svg root"
+          pass "mermaid render surfaced via MCP"
+
+          say "render_dot over MCP (source → SVG at workspace-relative path)"
+          DOT_SRC='digraph G { rankdir=LR; client -> sandbox -> workspace; }'
+          ARGS=$(jq -cn --arg src "$DOT_SRC" --arg out graph.svg '{source:$src, output_path:$out}')
+          OUT=$(mcp_call "render_dot" "$ARGS")
+          grep -qE 'graph.svg|wrote' <<<"$OUT" || fail "render_dot confirmation missing: $OUT"
+          grep -q '<svg' "$WS/graph.svg" || fail "graph.svg missing <svg root"
+          pass "dot render surfaced via MCP"
