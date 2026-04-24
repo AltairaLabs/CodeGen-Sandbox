@@ -1,0 +1,71 @@
+# syntax=docker/dockerfile:1.7
+#
+# codegen-sandbox-tools-python — feature tools layer carrying Python-ecosystem
+# linters/formatters that sandbox features consume on PATH.
+#
+# Contents (on `scratch`):
+#   /ruff  — ruff linter + formatter (native binary)
+#
+# IMPORTANT — glibc required on the consumer base image. Upstream publishes
+# per-arch `-gnu` tarballs whose binaries are dynamically linked against
+# glibc (libc.so.6, libgcc_s.so.1, etc.) and fail on an alpine / musl base.
+# Operators should compose this layer onto a glibc base such as
+# `python:3.12-slim`, `debian:bookworm-slim`, or `ubuntu:24.04`. We fetch on
+# `debian:bookworm-slim` so the `--version` sanity check can actually
+# execute during the build. (A `-musl` tarball is also published upstream;
+# switch the tarball URL if you need a musl variant later.)
+#
+# Operator composition:
+#
+#   FROM python:3.12-slim
+#   COPY --from=ghcr.io/altairalabs/codegen-sandbox-tools:latest         /sandbox  /usr/local/bin/
+#   COPY --from=ghcr.io/altairalabs/codegen-sandbox-tools:latest         /rg       /usr/local/bin/
+#   COPY --from=ghcr.io/altairalabs/codegen-sandbox-tools-python:latest  /ruff     /usr/local/bin/
+#
+# Intentionally NOT shipped from this layer:
+#
+#   * pyright-langserver — pure Node.js package published as an npm module;
+#     requires a Node runtime at execute time. Single-file bundling via
+#     `pkg` / `@vercel/ncc` / `bun build --compile` is a separate lift and
+#     is deferred to a follow-up PR (same deferral rationale as the
+#     `typescript-language-server` / `prettier` bundles on the Node layer).
+#     Until then, operators who want Python LSP can install it at build
+#     time with `npm i -g pyright` on top of a Node base image, or wait
+#     for the bundled follow-up.
+#
+# See https://github.com/AltairaLabs/CodeGen-Sandbox/issues/26 for the
+# full feature-layers roadmap.
+
+# -------- ruff fetcher --------
+# ruff publishes a per-arch tarball on GitHub releases as
+# `ruff-${ARCH_TRIPLE}.tar.gz`, extracting to `ruff-${ARCH_TRIPLE}/ruff`.
+# The `-gnu` flavor is dynamically linked against glibc (verified: depends on
+# libgcc_s, libc, libdl, libpthread, etc.), so we fetch on a glibc base
+# (debian-slim) where the `--version` sanity check can actually execute.
+# The binary is then transplanted as-is into the scratch final stage.
+FROM debian:bookworm-slim AS ruff-fetcher
+
+ARG RUFF_VERSION=0.8.4
+ARG TARGETARCH
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && case "${TARGETARCH}" in \
+         amd64) RUFF_TRIPLE="x86_64-unknown-linux-gnu" ;; \
+         arm64) RUFF_TRIPLE="aarch64-unknown-linux-gnu" ;; \
+         *)     echo "unsupported arch: ${TARGETARCH}"; exit 1 ;; \
+       esac \
+    && mkdir -p /out /tmp/ruff \
+    && curl -sSfL -o /tmp/ruff.tar.gz \
+         "https://github.com/astral-sh/ruff/releases/download/${RUFF_VERSION}/ruff-${RUFF_TRIPLE}.tar.gz" \
+    && tar -xzf /tmp/ruff.tar.gz -C /tmp/ruff \
+    && install -m 0755 "/tmp/ruff/ruff-${RUFF_TRIPLE}/ruff" /out/ruff \
+    && /out/ruff --version
+
+# -------- Final: scratch + one native binary --------
+FROM scratch
+
+COPY --from=ruff-fetcher /out/ruff /ruff
+
+# No ENTRYPOINT or CMD — artifact source, not a runtime image.
