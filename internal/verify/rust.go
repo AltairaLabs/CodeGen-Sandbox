@@ -59,3 +59,13 @@ func (*rustDetector) ParseTestFailures(_, _ string) []TestFailure { return nil }
 // LSPCommand returns nil: rust-analyzer lands in a follow-up issue
 // alongside codegen-sandbox-tools-rust bundling.
 func (*rustDetector) LSPCommand() []string { return nil }
+
+// FormatCheckCmd returns `rustfmt --check <file>`. `--check` makes rustfmt
+// exit non-zero on unformatted code and print a diff on stdout without
+// rewriting. `--edition 2021` is intentionally omitted — rustfmt picks the
+// edition from the enclosing Cargo.toml when run on an individual file,
+// and forcing a single edition here would fight projects pinned to 2018 /
+// 2024.
+func (*rustDetector) FormatCheckCmd(file string) []string {
+	return []string{"rustfmt", "--check", file}
+}

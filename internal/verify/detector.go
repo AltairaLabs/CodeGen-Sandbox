@@ -36,6 +36,19 @@ type Detector interface {
 	// results; a non-nil result whose first element isn't on PATH surfaces
 	// a "<binary> not found on PATH" message at Start time.
 	LSPCommand() []string
+	// FormatCheckCmd returns the argv for checking the formatting of a
+	// single file (typically passed as the last argument). Implementations
+	// return nil when no formatter is wired for the language, in which case
+	// callers (currently the post-edit format hook in Edit) skip the check
+	// silently. A non-nil result whose first element isn't on PATH surfaces
+	// a "<binary> not found on PATH" line — formatting feedback is
+	// advisory, never an Edit-level failure.
+	//
+	// The file argument is the workspace-relative path to the edited file,
+	// not an absolute path — formatters emit relative paths in their
+	// output, so keeping the input consistent avoids cross-path confusion
+	// when output is surfaced back to the agent.
+	FormatCheckCmd(file string) []string
 }
 
 // TestFailure is one structured test failure extracted from a test runner's

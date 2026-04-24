@@ -53,3 +53,14 @@ func (*nodeDetector) ParseTestFailures(_, _ string) []TestFailure { return nil }
 // lands in a follow-up issue alongside codegen-sandbox-tools-node bundling.
 // Callers surface a "LSP not configured for node" error.
 func (*nodeDetector) LSPCommand() []string { return nil }
+
+// FormatCheckCmd returns `prettier --check <file>`. `--check` reports which
+// files would be reformatted without rewriting. Prettier is assumed to be
+// on PATH directly (operators who install it project-local can shadow the
+// binary via a wrapper script); we deliberately avoid `npx` here to keep
+// the per-edit latency bounded — `npx` without `--no-install` can drag in
+// a network fetch, and `--no-install` adds ambiguity when the project
+// happens to have prettier installed locally vs globally.
+func (*nodeDetector) FormatCheckCmd(file string) []string {
+	return []string{"prettier", "--check", file}
+}
