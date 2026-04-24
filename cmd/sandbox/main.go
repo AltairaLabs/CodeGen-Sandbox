@@ -26,6 +26,7 @@ func main() {
 	root := flag.String("workspace", "/workspace", "workspace root (absolute path)")
 	devMode := flag.Bool("dev-mode", false, "trust-no-headers dev fallback: inject a placeholder identity when forwarded headers are absent")
 	secretsDir := flag.String("secrets-dir", "", "directory of one-file-per-secret mounts (e.g. k8s Secret volume). Empty disables the file source; CODEGEN_SANDBOX_SECRET_* env vars still work.")
+	readonly := flag.Bool("readonly", false, "scoped-exploration mode: register only read tools (Read, Glob, Grep, search_code, find_definition / find_references, snapshot_list / snapshot_diff, last_test_failures, tests_covering, secret). Mutating tools (Write, Edit, Bash, run_*, snapshot_create / snapshot_restore, rename_symbol, AST edits, render_*) are not registered, and tools/list reflects this.")
 	flag.Parse()
 
 	// SIGINT for Ctrl-C; SIGTERM for docker stop and most orchestrators.
@@ -47,6 +48,7 @@ func main() {
 		EnableSSH:                   *enableSSH,
 		SecretsDir:                  *secretsDir,
 		OTLPEndpoint:                *otlpEndpoint,
+		ReadOnly:                    *readonly,
 	}); err != nil {
 		log.Fatal(err)
 	}

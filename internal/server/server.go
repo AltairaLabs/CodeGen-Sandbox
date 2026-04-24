@@ -33,6 +33,12 @@ type Config struct {
 	// tools. Nil disables agent-health instrumentation (every Tracker method
 	// is nil-safe).
 	HealthTracker *health.Tracker
+
+	// ReadOnly switches the sandbox into scoped-exploration mode: only the
+	// non-mutating tools are registered, and tools/list reflects this so
+	// agents discover their reduced capability honestly. See #21 and
+	// docs/concepts/readonly-mode for the contract.
+	ReadOnly bool
 }
 
 // Server is the codegen sandbox MCP server.
@@ -84,27 +90,7 @@ func NewWithConfig(ws *workspace.Workspace, m *metrics.Metrics, cfg Config) (*Se
 		Metrics:       m,
 		Health:        cfg.HealthTracker,
 	}
-	tools.RegisterRead(reg, deps)
-	tools.RegisterWrite(reg, deps)
-	tools.RegisterEdit(reg, deps)
-	tools.RegisterGlob(reg, deps)
-	tools.RegisterGrep(reg, deps)
-	tools.RegisterBash(reg, deps)
-	tools.RegisterBashOutput(reg, deps)
-	tools.RegisterKillShell(reg, deps)
-	tools.RegisterRunTests(reg, deps)
-	tools.RegisterRunLint(reg, deps)
-	tools.RegisterRunTypecheck(reg, deps)
-	tools.RegisterRunScript(reg, deps)
-	tools.RegisterLastTestFailures(reg, deps)
-	tools.RegisterRunFailingTests(reg, deps)
-	tools.RegisterTestsCovering(reg, deps)
-	tools.RegisterSnapshots(reg, deps)
-	tools.RegisterSearchCode(reg, deps)
-	tools.RegisterASTEdits(reg, deps)
-	tools.RegisterLSPTools(reg, deps)
-	tools.RegisterSecrets(reg, deps)
-	tools.RegisterRender(reg, deps)
+	registerToolsForMode(reg, deps, cfg.ReadOnly)
 	// Web tools (WebFetch / WebSearch) are NOT registered here. They are
 	// stateless and don't need the sandbox's filesystem or process
 	// namespace, so operators hook up vendor MCP servers alongside this
@@ -133,6 +119,61 @@ func (s *Server) LSPRegistry() *lsp.Registry { return s.lspReg }
 // Shells exposes the server's background-shell registry so callers (metrics
 // timer, tests) can read or poll its state.
 func (s *Server) Shells() *tools.ShellRegistry { return s.shells }
+
+// registerToolsForMode wires the MCP tool surface for either full or
+// read-only mode.
+//
+// Read-only contract: only the tools that cannot mutate the workspace
+// (or its git refs, or the agent's session shells) are registered. The
+// MCP `tools/list` response then reflects the reduced surface honestly,
+// so a subagent dispatched in this mode discovers its own capability
+// boundary rather than calling a missing tool and getting a transport
+// error. See docs/concepts/readonly-mode for the full contract and #21
+// for the rationale.
+//
+// The split tracks each tool's authority:
+//
+//   - Read tools (Read, Glob, Grep, search_code, find_definition,
+//     find_references, snapshot_list, snapshot_diff,
+//     last_test_failures, tests_covering, secret) — always registered.
+//   - Mutating tools (Write, Edit, Bash, BashOutput, KillShell, run_*,
+//     snapshot_create, snapshot_restore, rename_symbol, the AST edit
+//     trio, render_*) — registered only when ReadOnly is false.
+//
+// Note that `secret` reads operator-configured credentials but does not
+// mutate the workspace, so it stays in the read-only set.
+func registerToolsForMode(reg tools.ToolAdder, deps *tools.Deps, readOnly bool) {
+	// Read tools — present in every mode.
+	tools.RegisterRead(reg, deps)
+	tools.RegisterGlob(reg, deps)
+	tools.RegisterGrep(reg, deps)
+	tools.RegisterSearchCode(reg, deps)
+	tools.RegisterLSPNavigation(reg, deps)
+	tools.RegisterSnapshotsReadOnly(reg, deps)
+	tools.RegisterLastTestFailures(reg, deps)
+	tools.RegisterTestsCovering(reg, deps)
+	tools.RegisterSecrets(reg, deps)
+
+	if readOnly {
+		return
+	}
+
+	// Mutating tools — only in full mode.
+	tools.RegisterWrite(reg, deps)
+	tools.RegisterEdit(reg, deps)
+	tools.RegisterBash(reg, deps)
+	tools.RegisterBashOutput(reg, deps)
+	tools.RegisterKillShell(reg, deps)
+	tools.RegisterRunTests(reg, deps)
+	tools.RegisterRunLint(reg, deps)
+	tools.RegisterRunTypecheck(reg, deps)
+	tools.RegisterRunScript(reg, deps)
+	tools.RegisterRunFailingTests(reg, deps)
+	tools.RegisterSnapshotsMutating(reg, deps)
+	tools.RegisterASTEdits(reg, deps)
+	tools.RegisterLSPRename(reg, deps)
+	tools.RegisterRender(reg, deps)
+}
 
 // resolveLSPCommand maps a Detector.Language() to its language-server argv.
 // Kept in sync with each Detector's LSPCommand(); single source of truth

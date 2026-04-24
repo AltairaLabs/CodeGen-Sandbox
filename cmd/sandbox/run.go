@@ -61,6 +61,12 @@ type Config struct {
 	// MetricsErrorRateWindow is the rolling buffer size (count of recent tool
 	// calls) feeding the sandbox_agent_tool_error_rate gauge.
 	MetricsErrorRateWindow int
+	// ReadOnly switches the sandbox into scoped-exploration mode: only the
+	// non-mutating tools are registered, and tools/list reflects this so
+	// agents discover their reduced capability honestly. Intended for
+	// PromptKit subagents dispatched to "explore the codebase and report
+	// back" — see #21 for the rationale.
+	ReadOnly bool
 }
 
 // apiEnabled reports whether any human-facing API surface is requested.
@@ -190,9 +196,17 @@ func maybeBuildHealth(cfg Config, m *metrics.Metrics) *health.Tracker {
 }
 
 func buildMCPServer(addr string, ws *workspace.Workspace, cfg Config, m *metrics.Metrics, h *health.Tracker, tracer *tracing.Tracer) (*http.Server, *server.Server, error) {
-	srv, err := server.NewWithConfig(ws, m, server.Config{SecretsDir: cfg.SecretsDir, Tracer: tracer, HealthTracker: h})
+	srv, err := server.NewWithConfig(ws, m, server.Config{
+		SecretsDir:    cfg.SecretsDir,
+		Tracer:        tracer,
+		HealthTracker: h,
+		ReadOnly:      cfg.ReadOnly,
+	})
 	if err != nil {
 		return nil, nil, fmt.Errorf("server: %w", err)
+	}
+	if cfg.ReadOnly {
+		log.Printf("codegen-sandbox running in read-only mode (mutating tools not registered)")
 	}
 	// No WriteTimeout — SSE streams are long-lived.
 	return &http.Server{
