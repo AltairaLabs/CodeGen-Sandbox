@@ -51,6 +51,16 @@ Runtime ~60s on a warm Go cache. LSP steps skip cleanly when `gopls` isn't on PA
 
 CI runs this tier as the `e2e-smoke` job: installs `gopls` + `ripgrep`, builds the binary, runs the script. No binary skips in CI — every LSP step is exercised.
 
+### `scripts/e2e-multi-workspace.sh`
+
+A focused companion to `e2e-p0.sh` that boots the sandbox in `-workspaces=primary=A,extension=B` mode and asserts every workspace-aware tool dispatches to the correct root, rejects the no-hint case with an actionable error, rejects unknown-name hints, and keeps the read-tracker per-absolute-path (one workspace's `Read` cannot unlock another's `Write`).
+
+```bash
+bash scripts/e2e-multi-workspace.sh
+```
+
+Runtime ~10s. Binaries needed: `go`, `bash`, `curl`, `jq`, `ripgrep` (Glob + Grep delegate to `rg`). Wired into CI as the `e2e-multi-workspace` job parallel to `e2e-smoke`.
+
 ## Tier 4 — Docker image smoke (CI only)
 
 The `docker-integration` CI job:
@@ -70,4 +80,5 @@ See [#58](https://github.com/AltairaLabs/CodeGen-Sandbox/issues/58) for the plan
 - **New tool, new flag, anything agent-visible**: add a case to `scripts/e2e-p0.sh` and run it locally before pushing.
 - **Touching the LSP client, the lint parser, or the Go test parser**: the integration tier is your regression net; run `make test-integration` locally.
 - **Touching the MCP transport, middleware, or any tool handler's wire contract**: `e2e-smoke` catches the full-stack regression.
+- **Touching `ResolveWorkspace`, the read-tracker, or any tool's `workspace` argument plumbing**: `e2e-multi-workspace` is the regression net.
 - **Dockerfile or image composition change**: push the branch and let `docker-integration` gate the merge.

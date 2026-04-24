@@ -459,6 +459,38 @@ jobs:
       - name: Run e2e-p0.sh
         run: bash scripts/e2e-p0.sh
 
+  e2e-multi-workspace:
+    name: End-to-end multi-workspace dispatch (scripts/e2e-multi-workspace.sh)
+    runs-on: ubuntu-latest
+    needs: go
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      # Glob + Grep delegate to ripgrep, so the script needs `rg` on PATH
+      # alongside the always-present bash / curl / jq / go. (LSP and
+      # docker installs aren't needed — the assertions only touch Read /
+      # Glob / Grep / Bash / Write.)
+      - name: Install ripgrep
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ripgrep
+
+      - name: Verify toolchain
+        run: |
+          go version
+          rg --version | head -1
+          jq --version
+          curl --version | head -1
+
+      - name: Build sandbox binary
+        run: make build
+
+      - name: Run e2e-multi-workspace.sh
+        run: bash scripts/e2e-multi-workspace.sh
+
   docker-integration:
     name: Docker image full-stack smoke
     runs-on: ubuntu-latest
