@@ -49,6 +49,7 @@ func seedRenameWorkspace(t *testing.T) string {
 func mustWrite(t *testing.T, root, rel, body string) {
 	t.Helper()
 	path := filepath.Join(root, rel)
+	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
 	require.NoError(t, os.WriteFile(path, []byte(body), 0o644))
 }
 

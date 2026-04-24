@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -49,6 +50,16 @@ type Client struct {
 	// lastUsed is updated on every successful request; registries use it
 	// to implement idle-shutdown timeouts.
 	lastUsedUnixNano atomic.Int64
+
+	// openedMu guards `opened`, the set of workspace-relative paths that
+	// have already been notified to the server via textDocument/didOpen.
+	// The sandbox sends didOpen once per file per client lifetime so
+	// non-Go language servers (pyright, tsserver) that require opened
+	// documents before they can answer position queries behave correctly.
+	// gopls tolerates repeated didOpens without churn, so one set works
+	// for every backend.
+	openedMu sync.Mutex
+	opened   map[string]struct{}
 }
 
 // NewClient constructs (but does not spawn) a Client. workspace must be an
@@ -59,6 +70,7 @@ func NewClient(workspace string, argv []string) *Client {
 		workspace: workspace,
 		argv:      argv,
 		inflight:  make(map[int]chan jsonrpcResponse),
+		opened:    make(map[string]struct{}),
 	}
 }
 
@@ -124,6 +136,16 @@ func (c *Client) handshake(ctx context.Context) error {
 		"rootUri":   pathToURI(c.workspace),
 		"capabilities": map[string]any{
 			"textDocument": map[string]any{
+				// synchronization is the capability group that advertises
+				// didOpen / didChange / didClose support to the server.
+				// pyright + typescript-language-server require the client
+				// declare this before they will process didOpen — gopls
+				// tolerates the omission.
+				"synchronization": map[string]any{
+					"didSave":           false,
+					"willSave":          false,
+					"willSaveWaitUntil": false,
+				},
 				"definition": map[string]any{},
 				"references": map[string]any{},
 				"rename":     map[string]any{},
@@ -247,6 +269,7 @@ func (c *Client) Definition(ctx context.Context, file string, line, col int) ([]
 	if err := c.Start(ctx); err != nil {
 		return nil, err
 	}
+	c.ensureOpen(file)
 	params := positionParams(c.workspace, file, line, col)
 	raw, err := c.call(ctx, "textDocument/definition", params)
 	if err != nil {
@@ -261,6 +284,7 @@ func (c *Client) References(ctx context.Context, file string, line, col int) ([]
 	if err := c.Start(ctx); err != nil {
 		return nil, err
 	}
+	c.ensureOpen(file)
 	params := referenceParams(c.workspace, file, line, col)
 	raw, err := c.call(ctx, "textDocument/references", params)
 	if err != nil {
@@ -276,12 +300,75 @@ func (c *Client) Rename(ctx context.Context, file string, line, col int, newName
 	if err := c.Start(ctx); err != nil {
 		return WorkspaceEdit{}, err
 	}
+	c.ensureOpen(file)
 	params := renameParams(c.workspace, file, line, col, newName)
 	raw, err := c.call(ctx, "textDocument/rename", params)
 	if err != nil {
 		return WorkspaceEdit{}, err
 	}
 	return decodeWorkspaceEdit(raw, c.workspace)
+}
+
+// ensureOpen sends one textDocument/didOpen notification per file per
+// client lifetime. pyright and typescript-language-server will not
+// answer position queries against files they haven't seen a didOpen for;
+// gopls tolerates the notification without churn. Failures (missing
+// file on disk, notify write error) are swallowed — the worst case is
+// the subsequent query returns an empty result, which the caller
+// already handles as "no definition".
+//
+// Pre-Start callers (the per-file cache state is observable in tests
+// without spawning a subprocess) get the cache entry but skip the
+// notify, because c.stdin is only populated after doStart.
+func (c *Client) ensureOpen(file string) {
+	abs := absFile(c.workspace, file)
+	c.openedMu.Lock()
+	_, already := c.opened[abs]
+	c.opened[abs] = struct{}{}
+	c.openedMu.Unlock()
+	if already {
+		return
+	}
+	content, err := os.ReadFile(abs)
+	if err != nil {
+		return
+	}
+	if c.stdin == nil {
+		return
+	}
+	_ = c.notify("textDocument/didOpen", map[string]any{
+		"textDocument": map[string]any{
+			"uri":        pathToURI(abs),
+			"languageId": languageIDForFile(file),
+			"version":    1,
+			"text":       string(content),
+		},
+	})
+}
+
+// languageIDForFile maps a filename extension to the LSP-spec languageId
+// the server expects in textDocument/didOpen. Unknown extensions get an
+// empty string, which most servers tolerate (they dispatch on URI
+// extension instead).
+func languageIDForFile(file string) string {
+	switch filepath.Ext(file) {
+	case ".go":
+		return "go"
+	case ".py":
+		return "python"
+	case ".rs":
+		return "rust"
+	case ".ts":
+		return "typescript"
+	case ".tsx":
+		return "typescriptreact"
+	case ".js":
+		return "javascript"
+	case ".jsx":
+		return "javascriptreact"
+	default:
+		return ""
+	}
 }
 
 // Shutdown issues the LSP shutdown + exit handshake and waits for the
