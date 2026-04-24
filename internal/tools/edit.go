@@ -237,11 +237,11 @@ func postEditFormatFeedback(ctx context.Context, root, editedAbs string) string 
 // one works in "keep full trailing newlines" mode for grep's line output,
 // whereas we want a stable truncation marker on overflow to keep the
 // format section self-describing.
-func truncateFormatOutput(text string, max int) string {
+func truncateFormatOutput(text string, maxLines int) string {
 	lines := strings.Split(text, "\n")
-	if len(lines) <= max {
+	if len(lines) <= maxLines {
 		return text
 	}
-	truncated := len(lines) - max
-	return strings.Join(lines[:max], "\n") + fmt.Sprintf("\n... (%d lines truncated)\n", truncated)
+	truncated := len(lines) - maxLines
+	return strings.Join(lines[:maxLines], "\n") + fmt.Sprintf("\n... (%d lines truncated)\n", truncated)
 }
