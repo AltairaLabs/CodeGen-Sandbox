@@ -1,0 +1,66 @@
+# syntax=docker/dockerfile:1.7
+#
+# codegen-sandbox-tools-rust — feature tools layer carrying Rust-ecosystem
+# binaries that sandbox features consume on PATH.
+#
+# Contents (on `scratch`):
+#   /rust-analyzer — Rust language server (native binary)
+#
+# IMPORTANT — glibc required on the consumer base image. Upstream publishes
+# per-arch `-unknown-linux-gnu.gz` binaries that are dynamically linked
+# against glibc (libc.so.6, libgcc_s.so.1, etc.) and fail on an alpine /
+# musl base. Operators should compose this layer onto a glibc base such as
+# `rust:1-slim-bookworm`, `debian:bookworm-slim`, or `ubuntu:24.04`. We
+# fetch on `debian:bookworm-slim` so the `--version` sanity check can
+# actually execute during the build.
+#
+# Operator composition:
+#
+#   FROM rust:1-slim-bookworm
+#   COPY --from=ghcr.io/altairalabs/codegen-sandbox-tools:latest         /sandbox        /usr/local/bin/
+#   COPY --from=ghcr.io/altairalabs/codegen-sandbox-tools:latest         /rg             /usr/local/bin/
+#   COPY --from=ghcr.io/altairalabs/codegen-sandbox-tools-rust:latest    /rust-analyzer  /usr/local/bin/
+#
+# Intentionally NOT shipped from this layer:
+#
+#   * rustfmt / clippy / cargo — these ship with the Rust toolchain itself
+#     via `rustup component add rustfmt clippy` (or are present by default
+#     on `rust:<ver>` base images). Re-shipping them here would duplicate
+#     binaries the operator already has on their base image.
+#
+# See https://github.com/AltairaLabs/CodeGen-Sandbox/issues/26 for the
+# full feature-layers roadmap.
+
+# -------- rust-analyzer fetcher --------
+# rust-analyzer publishes per-arch gzipped binaries (not tarballs) on
+# GitHub releases as `rust-analyzer-${ARCH_TRIPLE}.gz`. The `-gnu` flavor
+# is dynamically linked against glibc (verified: depends on libc,
+# libgcc_s, libpthread, etc.), so we fetch on a glibc base (debian-slim)
+# where the `--version` sanity check can actually execute. The binary is
+# then transplanted as-is into the scratch final stage.
+FROM debian:bookworm-slim AS rust-analyzer-fetcher
+
+ARG RUST_ANALYZER_VERSION=2025-01-27
+ARG TARGETARCH
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && case "${TARGETARCH}" in \
+         amd64) RA_TRIPLE="x86_64-unknown-linux-gnu" ;; \
+         arm64) RA_TRIPLE="aarch64-unknown-linux-gnu" ;; \
+         *)     echo "unsupported arch: ${TARGETARCH}"; exit 1 ;; \
+       esac \
+    && mkdir -p /out \
+    && curl -sSfL -o /tmp/rust-analyzer.gz \
+         "https://github.com/rust-lang/rust-analyzer/releases/download/${RUST_ANALYZER_VERSION}/rust-analyzer-${RA_TRIPLE}.gz" \
+    && gunzip -c /tmp/rust-analyzer.gz > /out/rust-analyzer \
+    && chmod 0755 /out/rust-analyzer \
+    && /out/rust-analyzer --version
+
+# -------- Final: scratch + one native binary --------
+FROM scratch
+
+COPY --from=rust-analyzer-fetcher /out/rust-analyzer /rust-analyzer
+
+# No ENTRYPOINT or CMD — artifact source, not a runtime image.
