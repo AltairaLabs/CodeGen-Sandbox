@@ -21,10 +21,11 @@ const (
 // the detected package manager (npm / pnpm / yarn / bun).
 func RegisterRunScript(s ToolAdder, deps *Deps) {
 	tool := mcp.NewTool("run_script",
-		mcp.WithDescription("Run a script defined in package.json#scripts via the detected Node package manager (npm / pnpm / yarn / bun). Node-only today — Go / Python / Rust workspaces surface a clear 'only Node projects support scripts' error. In a polyglot workspace pass `language` to dispatch to the Node detector."),
+		mcp.WithDescription("Run a script defined in package.json#scripts via the detected Node package manager (npm / pnpm / yarn / bun). Node-only today — Go / Python / Rust workspaces surface a clear 'only Node projects support scripts' error. In a polyglot workspace pass `language` to dispatch to the Node detector. In multi-workspace mode pass `workspace` to pick one."),
 		mcp.WithString("name", mcp.Required(), mcp.Description("Script name as defined in package.json#scripts (e.g. \"build\", \"dev\", \"lint\").")),
 		mcp.WithNumber("timeout", mcp.Description(fmt.Sprintf("Timeout in seconds. Default %d, clamped to a maximum of %d.", defaultRunScriptTimeoutSec, maxRunScriptTimeoutSec))),
 		withLanguageArg(),
+		withWorkspaceArg(),
 	)
 	s.AddTool(tool, HandleRunScript(deps))
 }
@@ -36,7 +37,11 @@ func RegisterRunScript(s ToolAdder, deps *Deps) {
 func HandleRunScript(deps *Deps) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		args, _ := req.Params.Arguments.(map[string]any)
-		det, errRes := dispatchByLanguage(deps, args)
+		ws, errRes := ResolveWorkspace(deps, args)
+		if errRes != nil {
+			return errRes, nil
+		}
+		det, errRes := dispatchByLanguage(ws, args)
 		if errRes != nil {
 			return errRes, nil
 		}
@@ -51,7 +56,7 @@ func HandleRunScript(deps *Deps) func(context.Context, mcp.CallToolRequest) (*mc
 		}
 		timeoutSec := parseRunScriptTimeout(args)
 
-		scripts, err := readPackageScripts(deps.Workspace.Root())
+		scripts, err := readPackageScripts(ws.Root())
 		if err != nil {
 			return ErrorResult("run_script: %v", err), nil
 		}
@@ -63,7 +68,7 @@ func HandleRunScript(deps *Deps) func(context.Context, mcp.CallToolRequest) (*mc
 		cmd := append([]string{}, runner...)
 		cmd = append(cmd, scriptName)
 
-		res, err := runVerifyCmd(ctx, cmd, deps.Workspace.Root(), timeoutSec)
+		res, err := runVerifyCmd(ctx, cmd, ws.Root(), timeoutSec)
 		if err != nil {
 			return ErrorResult("run_script: %v", err), nil
 		}

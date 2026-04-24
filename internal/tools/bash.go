@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/altairalabs/codegen-sandbox/internal/workspace"
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
@@ -29,11 +30,12 @@ const (
 // RegisterBash registers the Bash tool on the given MCP server.
 func RegisterBash(s ToolAdder, deps *Deps) {
 	tool := mcp.NewTool("Bash",
-		mcp.WithDescription("Run a shell command in the workspace via bash -c. Runs from the workspace root (use `cd subdir && ...` to move); stdin is closed; env is inherited from the server. Returns combined stdout+stderr, capped at 100 KiB with a '... (output truncated, N bytes elided)' marker — late output such as the last few lines of a build log may be elided. A trailing 'exit: N' line is emitted for non-zero exits. A 'timed out after Ns' marker is emitted on timeout (exit code 124), and the entire process group is killed so backgrounded children do not survive. A small set of dangerous tokens (sudo, su, shutdown, reboot, halt, poweroff, chroot, mount, umount, mkfs) at plausible command positions are rejected before the command runs."),
+		mcp.WithDescription("Run a shell command in the workspace via bash -c. Runs from the workspace root (use `cd subdir && ...` to move); stdin is closed; env is inherited from the server. Returns combined stdout+stderr, capped at 100 KiB with a '... (output truncated, N bytes elided)' marker — late output such as the last few lines of a build log may be elided. A trailing 'exit: N' line is emitted for non-zero exits. A 'timed out after Ns' marker is emitted on timeout (exit code 124), and the entire process group is killed so backgrounded children do not survive. A small set of dangerous tokens (sudo, su, shutdown, reboot, halt, poweroff, chroot, mount, umount, mkfs) at plausible command positions are rejected before the command runs. In multi-workspace mode pass `workspace` to pick one."),
 		mcp.WithString("command", mcp.Required(), mcp.Description("Shell command to run.")),
 		mcp.WithString("description", mcp.Required(), mcp.Description("5-10 word description of what this command does. Recorded for agent context; does not affect execution.")),
 		mcp.WithNumber("timeout", mcp.Description(fmt.Sprintf("Timeout in seconds. Default %d, clamped to a maximum of %d.", defaultBashTimeoutSec, maxBashTimeoutSec))),
 		mcp.WithBoolean("run_in_background", mcp.Description("If true, spawn the command in the background and return a shell_id immediately. Use BashOutput to poll and KillShell to terminate.")),
+		withWorkspaceArg(),
 	)
 	s.AddTool(tool, HandleBash(deps))
 }
@@ -43,20 +45,25 @@ func HandleBash(deps *Deps) func(context.Context, mcp.CallToolRequest) (*mcp.Cal
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		args, _ := req.Params.Arguments.(map[string]any)
 
+		ws, errRes := ResolveWorkspace(deps, args)
+		if errRes != nil {
+			return errRes, nil
+		}
+
 		command, errRes := validateBashArgs(deps, args)
 		if errRes != nil {
 			return errRes, nil
 		}
 
 		if bg, _ := args["run_in_background"].(bool); bg {
-			return handleBashBackground(deps, command)
+			return handleBashBackground(deps, ws, command)
 		}
 
 		timeoutSec := parseBashTimeout(args)
 		execCtx, cancel := context.WithTimeout(ctx, time.Duration(timeoutSec)*time.Second)
 		defer cancel()
 
-		cmd := newBashForegroundCmd(execCtx, deps.Workspace.Root(), command)
+		cmd := newBashForegroundCmd(execCtx, ws.Root(), command)
 		out, runErr := cmd.CombinedOutput()
 
 		timedOut := errors.Is(execCtx.Err(), context.DeadlineExceeded)
@@ -212,7 +219,7 @@ func denyDetails(command string) (token, reason string) {
 // with deps.Shells, and returns the shell ID immediately. Goroutines drain
 // stdout/stderr into the shell's capped buffers and record the exit code
 // when the process finishes.
-func handleBashBackground(deps *Deps, command string) (*mcp.CallToolResult, error) {
+func handleBashBackground(deps *Deps, ws *workspace.Workspace, command string) (*mcp.CallToolResult, error) {
 	if deps.Shells == nil {
 		return ErrorResult("background shells not configured"), nil
 	}
@@ -220,7 +227,7 @@ func handleBashBackground(deps *Deps, command string) (*mcp.CallToolResult, erro
 	sh := NewBackgroundShell(id, command)
 	deps.Shells.Register(sh)
 
-	cmd, stdoutPipe, stderrPipe, errRes := startBackgroundBashCmd(deps, sh, command, "bash-bg")
+	cmd, stdoutPipe, stderrPipe, errRes := startBackgroundBashCmd(deps, ws, sh, command, "bash-bg")
 	if errRes != nil {
 		return errRes, nil
 	}
@@ -241,10 +248,10 @@ func handleBashBackground(deps *Deps, command string) (*mcp.CallToolResult, erro
 // The tag arg is used only in the error message to disambiguate which
 // surface surfaced a spawn failure to the agent; it is not baked into
 // the child's environment.
-func startBackgroundBashCmd(deps *Deps, sh *BackgroundShell, command, tag string) (*exec.Cmd, io.Reader, io.Reader, *mcp.CallToolResult) {
+func startBackgroundBashCmd(deps *Deps, ws *workspace.Workspace, sh *BackgroundShell, command, tag string) (*exec.Cmd, io.Reader, io.Reader, *mcp.CallToolResult) {
 	// Absolute path — see newBashForegroundCmd for why.
 	cmd := exec.Command("/bin/bash", "-c", command)
-	cmd.Dir = deps.Workspace.Root()
+	cmd.Dir = ws.Root()
 	cmd.Stdin = nil
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 

@@ -39,6 +39,13 @@ type Config struct {
 	// agents discover their reduced capability honestly. See #21 and
 	// docs/concepts/readonly-mode for the contract.
 	ReadOnly bool
+
+	// Workspaces, when non-nil, lets tool handlers dispatch on an
+	// optional `workspace` argument. Nil means single-workspace mode —
+	// tools resolve exclusively through the *workspace.Workspace passed
+	// to NewWithConfig. See #23 and docs/concepts/multi-workspace for
+	// the contract.
+	Workspaces *workspace.Set
 }
 
 // Server is the codegen sandbox MCP server.
@@ -81,6 +88,7 @@ func NewWithConfig(ws *workspace.Workspace, m *metrics.Metrics, cfg Config) (*Se
 	reg := &observabilityRegistrar{inner: s.mcp, metrics: m, health: cfg.HealthTracker, tracer: cfg.Tracer, ws: s.ws}
 	deps := &tools.Deps{
 		Workspace:     s.ws,
+		Workspaces:    cfg.Workspaces,
 		Tracker:       s.tracker,
 		Shells:        s.shells,
 		TestResults:   tools.NewTestResultStore(),

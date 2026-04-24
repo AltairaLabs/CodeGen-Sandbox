@@ -109,8 +109,11 @@ func HandleWatchProcess(deps *Deps) func(context.Context, mcp.CallToolRequest) (
 
 		// Share /bin/bash -c + Setpgid + stdout/stderr pipe plumbing with
 		// background Bash — both surfaces spawn identically-shaped child
-		// processes and any divergence would be a bug.
-		cmd, stdoutPipe, stderrPipe, errRes := startBackgroundBashCmd(deps, sh, command, "watch_process")
+		// processes and any divergence would be a bug. watch_process
+		// predates multi-workspace support and spawns against
+		// deps.Workspace (the default workspace); accepting a
+		// `workspace` arg is a follow-up.
+		cmd, stdoutPipe, stderrPipe, errRes := startBackgroundBashCmd(deps, deps.Workspace, sh, command, "watch_process")
 		if errRes != nil {
 			return errRes, nil
 		}

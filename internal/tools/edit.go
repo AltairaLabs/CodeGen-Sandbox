@@ -16,11 +16,12 @@ import (
 // RegisterEdit registers the Edit tool.
 func RegisterEdit(s ToolAdder, deps *Deps) {
 	tool := mcp.NewTool("Edit",
-		mcp.WithDescription("Exact-string replace within a file. Requires a prior Read. On Go projects, lint findings for the edited file are appended to the success message as 'post-edit lint findings (N):' — best effort, silent on linter failure or absence."),
+		mcp.WithDescription("Exact-string replace within a file. Requires a prior Read. On Go projects, lint findings for the edited file are appended to the success message as 'post-edit lint findings (N):' — best effort, silent on linter failure or absence. In multi-workspace mode pass `workspace` to pick one."),
 		mcp.WithString("file_path", mcp.Required()),
 		mcp.WithString("old_string", mcp.Required()),
 		mcp.WithString("new_string", mcp.Required()),
 		mcp.WithBoolean("replace_all", mcp.Description("If true, replace every occurrence; default false.")),
+		withWorkspaceArg(),
 	)
 	s.AddTool(tool, HandleEdit(deps))
 }
@@ -30,12 +31,17 @@ func HandleEdit(deps *Deps) func(context.Context, mcp.CallToolRequest) (*mcp.Cal
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		args, _ := req.Params.Arguments.(map[string]any)
 
+		ws, errRes := ResolveWorkspace(deps, args)
+		if errRes != nil {
+			return errRes, nil
+		}
+
 		parsed, errRes := parseEditArgs(args)
 		if errRes != nil {
 			return errRes, nil
 		}
 
-		abs, errRes := resolveEditTarget(deps, parsed.filePath)
+		abs, errRes := resolveEditTarget(ws, deps, parsed.filePath)
 		if errRes != nil {
 			return errRes, nil
 		}
@@ -59,10 +65,10 @@ func HandleEdit(deps *Deps) func(context.Context, mcp.CallToolRequest) (*mcp.Cal
 		// single and replace_all edits.
 		deps.Metrics.EditBytes(len(parsed.newStr) * count)
 		msg := fmt.Sprintf("replaced %d occurrence(s) in %s", count, parsed.filePath)
-		if feedback := postEditLintFeedback(ctx, deps.Workspace.Root(), abs); feedback != "" {
+		if feedback := postEditLintFeedback(ctx, ws.Root(), abs); feedback != "" {
 			msg += "\n\n" + feedback
 		}
-		if feedback := postEditFormatFeedback(ctx, deps.Workspace.Root(), abs); feedback != "" {
+		if feedback := postEditFormatFeedback(ctx, ws.Root(), abs); feedback != "" {
 			msg += "\n\n" + feedback
 		}
 		return TextResult(msg), nil
@@ -96,8 +102,8 @@ func parseEditArgs(args map[string]any) (*editArgs, *mcp.CallToolResult) {
 	return &editArgs{filePath: filePath, oldStr: oldStr, newStr: newStr, replaceAll: replaceAll}, nil
 }
 
-func resolveEditTarget(deps *Deps, filePath string) (string, *mcp.CallToolResult) {
-	abs, err := deps.Workspace.Resolve(filePath)
+func resolveEditTarget(ws *workspace.Workspace, deps *Deps, filePath string) (string, *mcp.CallToolResult) {
+	abs, err := ws.Resolve(filePath)
 	if err != nil {
 		if errors.Is(err, workspace.ErrOutsideWorkspace) {
 			deps.Metrics.PathViolation()

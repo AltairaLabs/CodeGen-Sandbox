@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/altairalabs/codegen-sandbox/internal/verify"
+	"github.com/altairalabs/codegen-sandbox/internal/workspace"
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
@@ -32,8 +33,12 @@ const languageArgDescription = "Project language to dispatch to: \"go\", \"node\
 // Returns (detector, nil) on success; (nil, errResult) on every error
 // path. Callers forward errResult straight to MCP — it's already shaped
 // as a tool-result error.
-func dispatchByLanguage(deps *Deps, args map[string]any) (verify.Detector, *mcp.CallToolResult) {
-	all := verify.DetectAll(deps.Workspace.Root())
+//
+// In multi-workspace mode (#23) the caller first resolves the workspace
+// via ResolveWorkspace and passes it as `ws` — dispatch is per-workspace
+// since detection walks that workspace's root.
+func dispatchByLanguage(ws *workspace.Workspace, args map[string]any) (verify.Detector, *mcp.CallToolResult) {
+	all := verify.DetectAll(ws.Root())
 	if len(all) == 0 {
 		return nil, ErrorResult("no supported project detected in workspace root")
 	}

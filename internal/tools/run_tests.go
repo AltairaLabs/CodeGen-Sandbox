@@ -18,9 +18,10 @@ const (
 // RegisterRunTests registers the run_tests tool on the given MCP server.
 func RegisterRunTests(s ToolAdder, deps *Deps) {
 	tool := mcp.NewTool("run_tests",
-		mcp.WithDescription("Run the project's test suite. Project type is detected from the workspace root (Go via go.mod, Node via package.json, Python via pyproject.toml/setup.py, Rust via Cargo.toml). In a polyglot workspace pass `language` to pick one. Returns combined stdout+stderr plus a trailing 'exit: N' line. For Go projects the runner uses `-json` so the companion `last_test_failures` tool can surface structured failure records."),
+		mcp.WithDescription("Run the project's test suite. Project type is detected from the workspace root (Go via go.mod, Node via package.json, Python via pyproject.toml/setup.py, Rust via Cargo.toml). In a polyglot workspace pass `language` to pick one. In multi-workspace mode pass `workspace` to pick one. Returns combined stdout+stderr plus a trailing 'exit: N' line. For Go projects the runner uses `-json` so the companion `last_test_failures` tool can surface structured failure records."),
 		mcp.WithNumber("timeout", mcp.Description(fmt.Sprintf("Timeout in seconds. Default %d, clamped to a maximum of %d.", defaultRunTestsTimeoutSec, maxRunTestsTimeoutSec))),
 		withLanguageArg(),
+		withWorkspaceArg(),
 	)
 	s.AddTool(tool, HandleRunTests(deps))
 }
@@ -29,7 +30,11 @@ func RegisterRunTests(s ToolAdder, deps *Deps) {
 func HandleRunTests(deps *Deps) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		args, _ := req.Params.Arguments.(map[string]any)
-		det, errRes := dispatchByLanguage(deps, args)
+		ws, errRes := ResolveWorkspace(deps, args)
+		if errRes != nil {
+			return errRes, nil
+		}
+		det, errRes := dispatchByLanguage(ws, args)
 		if errRes != nil {
 			return errRes, nil
 		}
@@ -39,7 +44,7 @@ func HandleRunTests(deps *Deps) func(context.Context, mcp.CallToolRequest) (*mcp
 		testCmd, profilePath := augmentTestCmdForCoverage(det, deps)
 		defer cleanupCoverageProfile(profilePath)
 
-		res, err := runVerifyCmd(ctx, testCmd, deps.Workspace.Root(), timeoutSec)
+		res, err := runVerifyCmd(ctx, testCmd, ws.Root(), timeoutSec)
 		if err != nil {
 			return ErrorResult("run_tests: %v", err), nil
 		}

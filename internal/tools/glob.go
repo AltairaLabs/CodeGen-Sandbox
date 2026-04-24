@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/altairalabs/codegen-sandbox/internal/workspace"
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
@@ -15,10 +16,11 @@ const defaultGlobLimit = 100
 // RegisterGlob registers the Glob tool on the given MCP server.
 func RegisterGlob(s ToolAdder, deps *Deps) {
 	tool := mcp.NewTool("Glob",
-		mcp.WithDescription("Find files matching a glob pattern. Respects .gitignore. Returns paths relative to the workspace root (including the 'path' prefix when scoped), sorted by mtime (most recent first)."),
+		mcp.WithDescription("Find files matching a glob pattern. Respects .gitignore. Returns paths relative to the workspace root (including the 'path' prefix when scoped), sorted by mtime (most recent first). In multi-workspace mode pass `workspace` to pick one."),
 		mcp.WithString("pattern", mcp.Required(), mcp.Description("Glob pattern supporting '*', '?', '[...]', and '**'. e.g. '**/*.go' or 'src/**/*.ts'. Brace expansion and negation are NOT supported — make multiple calls for multi-extension matches.")),
 		mcp.WithString("path", mcp.Description("Directory to search within (workspace-relative or absolute). Defaults to workspace root.")),
 		mcp.WithNumber("limit", mcp.Description("Maximum number of paths to return (default 100).")),
+		withWorkspaceArg(),
 	)
 	s.AddTool(tool, HandleGlob(deps))
 }
@@ -28,13 +30,18 @@ func HandleGlob(deps *Deps) func(context.Context, mcp.CallToolRequest) (*mcp.Cal
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		args, _ := req.Params.Arguments.(map[string]any)
 
+		ws, errRes := ResolveWorkspace(deps, args)
+		if errRes != nil {
+			return errRes, nil
+		}
+
 		pattern, _ := args["pattern"].(string)
 		if pattern == "" {
 			return ErrorResult("pattern is required"), nil
 		}
 
-		root := deps.Workspace.Root()
-		scopeArg, errRes := resolveGlobScope(deps, args, root)
+		root := ws.Root()
+		scopeArg, errRes := resolveGlobScope(ws, args, root)
 		if errRes != nil {
 			return errRes, nil
 		}
@@ -63,12 +70,12 @@ func HandleGlob(deps *Deps) func(context.Context, mcp.CallToolRequest) (*mcp.Cal
 // resolveGlobScope returns the positional scope arg for rg, or "" for the
 // workspace root. The rg cwd is always the workspace root so emitted paths
 // stay workspace-relative (matching Grep's contract).
-func resolveGlobScope(deps *Deps, args map[string]any, root string) (string, *mcp.CallToolResult) {
+func resolveGlobScope(ws *workspace.Workspace, args map[string]any, root string) (string, *mcp.CallToolResult) {
 	pathArg, ok := args["path"].(string)
 	if !ok || pathArg == "" {
 		return "", nil
 	}
-	abs, err := deps.Workspace.Resolve(pathArg)
+	abs, err := ws.Resolve(pathArg)
 	if err != nil {
 		return "", ErrorResult("resolve path: %v", err)
 	}
