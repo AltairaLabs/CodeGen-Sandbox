@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/altairalabs/codegen-sandbox/internal/verify"
@@ -34,12 +35,16 @@ func HandleRunTests(deps *Deps) func(context.Context, mcp.CallToolRequest) (*mcp
 		args, _ := req.Params.Arguments.(map[string]any)
 		timeoutSec := parseRunTestsTimeout(args)
 
-		res, err := runVerifyCmd(ctx, det.TestCmd(), deps.Workspace.Root(), timeoutSec)
+		testCmd, profilePath := augmentTestCmdForCoverage(det, deps)
+		defer cleanupCoverageProfile(profilePath)
+
+		res, err := runVerifyCmd(ctx, testCmd, deps.Workspace.Root(), timeoutSec)
 		if err != nil {
 			return ErrorResult("run_tests: %v", err), nil
 		}
 
 		recordTestResult(deps, det, res)
+		ingestCoverage(deps, det, res, profilePath)
 		// Agent-health hooks. Failure count feeds the streak gauge; exit=0
 		// stamps the last-green timestamp so the time-since-last-green gauge
 		// can tick from zero.
@@ -103,3 +108,64 @@ func detectorSupportsStructuredFailures(det verify.Detector) bool {
 // languageGo is hoisted because it's referenced by both the support
 // predicate and the pass-count helper.
 const languageGo = "go"
+
+// augmentTestCmdForCoverage returns a possibly-adjusted argv plus the
+// coverage profile path to clean up afterwards. Go runs get a
+// `-coverprofile=<tempfile>` inserted after `go test`; other languages
+// pass through unchanged and profilePath is "".
+//
+// Non-destructive: we keep the detector's argv shape intact (no
+// -covermode / -coverpkg changes) — the default mode is `set` which is
+// enough for the per-(file,line)→tests mapping we build.
+func augmentTestCmdForCoverage(det verify.Detector, deps *Deps) ([]string, string) {
+	base := det.TestCmd()
+	if det.Language() != languageGo {
+		return base, ""
+	}
+	if deps.CoverageIndex == nil {
+		return base, ""
+	}
+	tmp, err := os.CreateTemp("", "codegen-sandbox-cover-*.out")
+	if err != nil {
+		return base, ""
+	}
+	profilePath := tmp.Name()
+	_ = tmp.Close()
+
+	// Insert `-coverprofile=<path>` right after `go test` so it
+	// precedes both flags and package args. `go test` accepts this
+	// position for all argv shapes the detector emits.
+	out := make([]string, 0, len(base)+1)
+	out = append(out, base[:2]...) // "go", "test"
+	out = append(out, "-coverprofile="+profilePath)
+	out = append(out, base[2:]...)
+	return out, profilePath
+}
+
+// cleanupCoverageProfile removes the temp profile after ingest. Guarded
+// so an empty path is a no-op (non-Go runs or temp-file creation
+// failures).
+func cleanupCoverageProfile(profilePath string) {
+	if profilePath == "" {
+		return
+	}
+	_ = os.Remove(profilePath)
+}
+
+// ingestCoverage populates the session coverage index when a Go
+// profile is available. No-ops when the index isn't configured, the
+// detector isn't Go, or the profile wasn't produced (test run failed
+// before any package finished).
+func ingestCoverage(deps *Deps, det verify.Detector, res execResult, profilePath string) {
+	if deps.CoverageIndex == nil || det.Language() != languageGo || profilePath == "" {
+		return
+	}
+	if _, err := os.Stat(profilePath); err != nil {
+		return
+	}
+	testsByPackage := verify.ExtractGoTestsByPackage(string(res.Stdout))
+	if len(testsByPackage) == 0 {
+		return
+	}
+	deps.CoverageIndex.Ingest(profilePath, testsByPackage)
+}
