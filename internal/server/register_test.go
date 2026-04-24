@@ -84,6 +84,8 @@ var mutatingToolNames = []string{
 	"run_typecheck",
 	"snapshot_create",
 	"snapshot_restore",
+	"watch_process",
+	"watch_process_events",
 }
 
 func TestRegisterToolsForMode_ReadOnlyExposesOnlyReadTools(t *testing.T) {
