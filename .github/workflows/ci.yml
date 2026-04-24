@@ -940,11 +940,12 @@ jobs:
 
           say "run_lint over MCP (cargo clippy --all-targets)"
           OUT=$(mcp_call "run_lint" '{"timeout":300}')
-          # Clean lint → no findings, exit 0. Don't hard-fail on findings
-          # (clippy's default lint set may flag something in std / proc
-          # macro expansion); the contract we're asserting is "the MCP
-          # wire surfaced the clippy invocation and returned output."
-          grep -qE 'exit: 0|exit:' <<<"$OUT" || fail "run_lint returned no exit line: $OUT"
+          # run_lint emits "N findings" as a trailing summary regardless
+          # of clean / dirty exit. The contract we're asserting is "the
+          # MCP wire surfaced the clippy invocation and returned the
+          # findings summary"; we don't pin the count because clippy's
+          # default lint set may flag std / proc-macro expansion noise.
+          grep -qE '^[0-9]+ findings' <<<"$OUT" || fail "run_lint missing findings summary: $OUT"
           pass "cargo clippy surfaced via MCP"
 
   docker-integration-render:
