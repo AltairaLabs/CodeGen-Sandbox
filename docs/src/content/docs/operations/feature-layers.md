@@ -190,7 +190,58 @@ The `--entrypoint` override is required because the final image targets `scratch
 
 ## `codegen-sandbox-tools-rust`
 
-Coming soon — see [#26](https://github.com/AltairaLabs/CodeGen-Sandbox/issues/26). Will carry `rust-analyzer`. `rustfmt` and `clippy` ship with the Rust toolchain (`rustup component add`) and are expected on the operator's `rust:<ver>` base image, not on this layer.
+**Image**: `ghcr.io/altairalabs/codegen-sandbox-tools-rust`
+
+**Size**: ~46 MB (one native binary)
+
+**Binaries carried**:
+
+| Path | Purpose | Version |
+|---|---|---|
+| `/rust-analyzer` | Rust language server — powers LSP navigation ([#9](https://github.com/AltairaLabs/CodeGen-Sandbox/issues/9)) for Rust projects | `2025-01-27` |
+
+`rust-analyzer` is the official per-arch gzipped binary from the [rust-lang/rust-analyzer](https://github.com/rust-lang/rust-analyzer/releases) GitHub releases (the `-unknown-linux-gnu` variant).
+
+**Glibc required on the consumer base image.** The upstream `-gnu` binary is dynamically linked against glibc (libc, libgcc_s, libpthread, etc.) — it will fail with "not found" on an alpine / musl base. Compose this layer onto a glibc base such as `rust:1-slim-bookworm`, `debian:bookworm-slim`, or `ubuntu:24.04`.
+
+### Not included (and why)
+
+- **`rustfmt` / `clippy` / `cargo`** — these ship with the Rust toolchain itself via `rustup component add rustfmt clippy` (or are already present by default on `rust:<ver>` base images). Re-shipping them from this layer would duplicate binaries the operator already has, so they intentionally stay on the base image.
+
+### Operator composition
+
+```dockerfile
+# rust:1-slim-bookworm is glibc (Debian) and ships rustfmt / clippy / cargo
+# out of the box. Do NOT use *-alpine — the upstream rust-analyzer -gnu
+# binary is dynamically linked against glibc and will fail on musl.
+FROM rust:1-slim-bookworm
+
+# Core sandbox tools.
+COPY --from=ghcr.io/altairalabs/codegen-sandbox-tools:latest       /sandbox        /usr/local/bin/sandbox
+COPY --from=ghcr.io/altairalabs/codegen-sandbox-tools:latest       /rg             /usr/local/bin/rg
+
+# Rust feature layer.
+COPY --from=ghcr.io/altairalabs/codegen-sandbox-tools-rust:latest  /rust-analyzer  /usr/local/bin/rust-analyzer
+
+WORKDIR /workspace
+EXPOSE 8080
+ENTRYPOINT ["/usr/local/bin/sandbox"]
+CMD ["-addr=:8080", "-workspace=/workspace"]
+```
+
+### Verifying locally
+
+```bash
+docker buildx build -f Dockerfile.tools-rust --load -t codegen-sandbox-tools-rust:test .
+
+docker create --name probe --entrypoint /rust-analyzer codegen-sandbox-tools-rust:test
+docker cp probe:/rust-analyzer /tmp/rust-analyzer
+docker rm probe
+
+docker run --rm --entrypoint /rust-analyzer codegen-sandbox-tools-rust:test --version
+```
+
+The `--entrypoint` override is required because the final image targets `scratch` with no default CMD / ENTRYPOINT.
 
 ## `codegen-sandbox-tools-render`
 

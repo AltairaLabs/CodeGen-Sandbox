@@ -290,6 +290,41 @@ jobs:
           ls -lh /tmp/ruff
           /tmp/ruff --version
 
+  docker-tools-rust:
+    name: Dockerfile.tools-rust build + artifact smoke
+    runs-on: ubuntu-latest
+    needs: go
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build tools-rust image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.tools-rust
+          push: false
+          load: true
+          tags: codegen-sandbox-tools-rust:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Extract + probe rust-analyzer
+        run: |
+          set -euo pipefail
+          # --entrypoint override: Dockerfile.tools-rust targets `scratch`
+          # and deliberately has no CMD/ENTRYPOINT. docker create refuses
+          # images without a command; overriding with /rust-analyzer
+          # satisfies that without starting anything. We then docker cp
+          # the binary out.
+          docker create --name extract-rust --entrypoint /rust-analyzer codegen-sandbox-tools-rust:ci
+          docker cp extract-rust:/rust-analyzer /tmp/rust-analyzer
+          docker rm extract-rust
+          chmod +x /tmp/rust-analyzer
+          ls -lh /tmp/rust-analyzer
+          /tmp/rust-analyzer --version
+
   integration:
     name: Integration tests (real gopls + golangci-lint)
     runs-on: ubuntu-latest
