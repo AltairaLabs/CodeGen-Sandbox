@@ -6,6 +6,7 @@ import (
 
 	"github.com/altairalabs/codegen-sandbox/internal/lsp"
 	"github.com/altairalabs/codegen-sandbox/internal/metrics"
+	"github.com/altairalabs/codegen-sandbox/internal/metrics/health"
 	"github.com/altairalabs/codegen-sandbox/internal/secrets"
 	"github.com/altairalabs/codegen-sandbox/internal/workspace"
 	"github.com/mark3labs/mcp-go/mcp"
@@ -36,6 +37,9 @@ type Deps struct {
 	// Metrics is the Prometheus surface; nil disables instrumentation.
 	// Every *metrics.Metrics method is nil-safe so call sites stay clean.
 	Metrics *metrics.Metrics
+	// Health is the agent-health tracker. Nil disables the per-verify-tool
+	// ObserveGreen / ObserveTestResult hooks; every method is nil-safe.
+	Health *health.Tracker
 }
 
 // ErrorResult wraps a user-visible message as an MCP error result.

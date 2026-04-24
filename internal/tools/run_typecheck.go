@@ -43,6 +43,10 @@ func HandleRunTypecheck(deps *Deps) func(context.Context, mcp.CallToolRequest) (
 		if err != nil {
 			return ErrorResult("run_typecheck: %v", err), nil
 		}
+		// Agent-health: stamp the last-green timestamp on a clean typecheck.
+		if res.ExitCode == 0 {
+			deps.Health.ObserveGreen()
+		}
 		return TextResult(formatVerifyResult(res, timeoutSec)), nil
 	}
 }
