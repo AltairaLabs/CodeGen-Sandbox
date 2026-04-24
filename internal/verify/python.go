@@ -21,10 +21,14 @@ func (*pythonDetector) Language() string { return "python" }
 // pyproject.toml or pytest.ini.
 func (*pythonDetector) TestCmd() []string { return []string{"pytest"} }
 
-// LintCmd returns "ruff check ." — ruff is ~100x faster than pylint and
-// its output is structurally similar enough to golangci-lint that future
-// ParseLint variants can share infrastructure.
-func (*pythonDetector) LintCmd() []string { return []string{"ruff", "check", "."} }
+// LintCmd returns "ruff check --output-format=concise ." — `--output-format=
+// concise` pins the one-line-per-finding form that ParseLint expects.
+// Without the flag ruff defaults to its newer rust-style multi-line
+// diagnostic with `-->` line markers (introduced in 0.6+) which the
+// regex doesn't match.
+func (*pythonDetector) LintCmd() []string {
+	return []string{"ruff", "check", "--output-format=concise", "."}
+}
 
 // TypecheckCmd returns "mypy ." — projects without mypy configured see
 // missing-binary or "no type hints" output.

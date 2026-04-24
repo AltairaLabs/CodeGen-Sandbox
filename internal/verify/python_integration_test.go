@@ -54,7 +54,10 @@ select = ["F"]
 	require.NoError(t, os.WriteFile(filepath.Join(root, "bad.py"),
 		[]byte("import os\n"), 0o644))
 
-	cmd := exec.Command("ruff", "check", ".")
+	// Mirror pythonDetector.LintCmd precisely: --output-format=concise
+	// pins the one-line-per-finding form ParseLint expects across ruff
+	// 0.6+ where the default flipped to a multi-line rust-style diagnostic.
+	cmd := exec.Command("ruff", "check", "--output-format=concise", ".")
 	cmd.Dir = root
 	stdout, runErr := cmd.Output()
 	// ruff exits non-zero when findings exist — that's the expected path

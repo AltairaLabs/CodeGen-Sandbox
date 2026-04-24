@@ -22,7 +22,7 @@ func TestDetect_NodeProject(t *testing.T) {
 	require.NotNil(t, d)
 	assert.Equal(t, "node", d.Language())
 	assert.Equal(t, []string{"npm", "test", "--silent"}, d.TestCmd())
-	assert.Equal(t, []string{"npx", "--no-install", "eslint", ".", "--format=compact"}, d.LintCmd())
+	assert.Equal(t, []string{"npx", "--no-install", "eslint", ".", "--format=json"}, d.LintCmd())
 	assert.Equal(t, []string{"npx", "--no-install", "tsc", "--noEmit"}, d.TypecheckCmd())
 }
 
@@ -31,7 +31,7 @@ func TestDetect_PythonProject_Pyproject(t *testing.T) {
 	require.NotNil(t, d)
 	assert.Equal(t, "python", d.Language())
 	assert.Equal(t, []string{"pytest"}, d.TestCmd())
-	assert.Equal(t, []string{"ruff", "check", "."}, d.LintCmd())
+	assert.Equal(t, []string{"ruff", "check", "--output-format=concise", "."}, d.LintCmd())
 	assert.Equal(t, []string{"mypy", "."}, d.TypecheckCmd())
 }
 

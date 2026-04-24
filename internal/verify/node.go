@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"regexp"
+	"strings"
 )
 
 // nodeDetector implements Detector for Node projects identified by a
@@ -103,13 +103,15 @@ func (d *nodeDetector) TestCmd() []string {
 }
 
 // LintCmd prefers the project-defined "lint" script via `<pm> run lint`
-// when present, falling back to `npx eslint . --format=compact`. The
-// `compact` format emits single-line findings for ParseLint.
+// when present, falling back to `npx eslint . --format=json`. The JSON
+// formatter is the most stable of eslint's built-ins — `compact` was
+// removed from the core in v9, leaving stylish (human-only), html,
+// json, and unix. ParseLint reads stdout as JSON to extract findings.
 func (d *nodeDetector) LintCmd() []string {
 	if d.scripts["lint"] {
 		return d.scriptInvocation("lint")
 	}
-	return []string{"npx", "--no-install", "eslint", ".", "--format=compact"}
+	return []string{"npx", "--no-install", "eslint", ".", "--format=json"}
 }
 
 // TypecheckCmd prefers the project-defined "typecheck" script via
@@ -123,19 +125,54 @@ func (d *nodeDetector) TypecheckCmd() []string {
 	return []string{"npx", "--no-install", "tsc", "--noEmit"}
 }
 
-// eslintLineRe matches eslint's --format=compact output on stdout:
-//
-//	/path/to/file.js: line 5, col 3, Error - Missing semicolon (semi)
-//
-// Level is Error|Warning. The message may contain any chars; the rule is
-// the final parenthesised token on the line (same approach as golangci-lint).
-var eslintLineRe = regexp.MustCompile(
-	`^(?P<file>[^:]+):\s+line\s+(?P<line>\d+),\s+col\s+(?P<col>\d+),\s+\w+\s+-\s+(?P<msg>.+?)\s+\((?P<rule>[A-Za-z][A-Za-z0-9_\-\/]*)\)\s*$`,
-)
+// eslintJSONFile is one element of eslint's --format=json output: an
+// array of per-file objects each with a `messages` slice. Only the
+// fields ParseLint consumes are decoded; eslint emits more (output,
+// usedDeprecatedRules, suppressedMessages, etc.) which we discard.
+type eslintJSONFile struct {
+	FilePath string          `json:"filePath"`
+	Messages []eslintJSONMsg `json:"messages"`
+}
 
-// ParseLint parses eslint's --format=compact output on stdout.
+type eslintJSONMsg struct {
+	RuleID   string `json:"ruleId"`
+	Severity int    `json:"severity"`
+	Message  string `json:"message"`
+	Line     int    `json:"line"`
+	Column   int    `json:"column"`
+}
+
+// ParseLint parses eslint's --format=json output on stdout. The JSON
+// formatter is stable across eslint v8 and v9 (the legacy `compact`
+// formatter was removed from core in v9), so this is the long-term
+// canonical shape.
+//
+// Severity 1 = warning, 2 = error in eslint's wire format; we surface
+// both as findings without a level label (LintFinding has no severity
+// field today). Findings without a ruleId (parse errors emitted by
+// eslint itself) are kept — agents need to see the parse error.
 func (*nodeDetector) ParseLint(stdout, _ string) []LintFinding {
-	return parseLintRegex(stdout, eslintLineRe)
+	stdout = strings.TrimSpace(stdout)
+	if stdout == "" {
+		return nil
+	}
+	var files []eslintJSONFile
+	if err := json.Unmarshal([]byte(stdout), &files); err != nil {
+		return nil
+	}
+	var out []LintFinding
+	for _, f := range files {
+		for _, m := range f.Messages {
+			out = append(out, LintFinding{
+				File:    f.FilePath,
+				Line:    m.Line,
+				Column:  m.Column,
+				Rule:    m.RuleID,
+				Message: m.Message,
+			})
+		}
+	}
+	return out
 }
 
 // ParseTestFailures is not yet implemented for Node; returns nil so

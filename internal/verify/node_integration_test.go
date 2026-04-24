@@ -72,9 +72,11 @@ func TestRealEslint_ParsesOutput(t *testing.T) {
 	// exactly the output it would in production. We invoke the global
 	// eslint directly (rather than the `npx --no-install` wrapper the
 	// detector uses) so the test doesn't require a per-project
-	// node_modules install — `--format=compact` is the only flag that
-	// affects the parsed surface.
-	cmd := exec.Command("eslint", ".", "--format=compact")
+	// node_modules install — `--format=json` is the only flag that
+	// affects the parsed surface. (The legacy `--format=compact` was
+	// removed from eslint v9 core; this PR migrates ParseLint + LintCmd
+	// to the JSON formatter, which is stable across v8 and v9.)
+	cmd := exec.Command("eslint", ".", "--format=json")
 	cmd.Dir = root
 	// Capture stderr separately so an exit>=2 diagnosis (config invalid,
 	// missing dep, etc) surfaces in the test failure instead of being

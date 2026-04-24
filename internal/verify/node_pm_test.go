@@ -101,7 +101,7 @@ func TestNodeDetector_TestCmd_FallsBackWhenNoTestScript(t *testing.T) {
 func TestNodeDetector_LintCmd_FallsBackWhenNoLintScript(t *testing.T) {
 	d := verify.Detect(seedNodeProject(t, `{"scripts":{"build":"next build"}}`))
 	require.NotNil(t, d)
-	assert.Equal(t, []string{"npx", "--no-install", "eslint", ".", "--format=compact"}, d.LintCmd())
+	assert.Equal(t, []string{"npx", "--no-install", "eslint", ".", "--format=json"}, d.LintCmd())
 }
 
 func TestNodeDetector_TypecheckCmd_FallsBackWhenNoTypecheckScript(t *testing.T) {
@@ -116,7 +116,7 @@ func TestNodeDetector_MalformedPackageJSON_FallsBack(t *testing.T) {
 	d := verify.Detect(seedNodeProject(t, "{this is not json"))
 	require.NotNil(t, d)
 	assert.Equal(t, []string{"npm", "test", "--silent"}, d.TestCmd())
-	assert.Equal(t, []string{"npx", "--no-install", "eslint", ".", "--format=compact"}, d.LintCmd())
+	assert.Equal(t, []string{"npx", "--no-install", "eslint", ".", "--format=json"}, d.LintCmd())
 	assert.Equal(t, []string{"npx", "--no-install", "tsc", "--noEmit"}, d.TypecheckCmd())
 }
 
