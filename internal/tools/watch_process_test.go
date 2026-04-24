@@ -237,6 +237,32 @@ func TestWatchProcess_SinceEventIDPaginatesCorrectly(t *testing.T) {
 	assert.Contains(t, after, "events (0)")
 }
 
+func TestWatchProcess_EventCapDropsOldestAndFlagsInBody(t *testing.T) {
+	requireBashForWatch(t)
+	deps, _ := newBGDeps(t)
+
+	// Generate > watchEventCap (1024) matches as fast as bash can emit
+	// them. A tight for-loop that writes the trigger line over and over
+	// plus a matching pattern gets us past the cap; the drop-oldest
+	// branch in appendEventLocked should then fire and the subsequent
+	// events body should include the "events dropped" note.
+	start := callWatchProcess(t, deps, map[string]any{
+		"command":        `for i in $(seq 1 1200); do echo "BOOM $i" 1>&2; done`,
+		"description":    "cap probe",
+		"error_patterns": []any{"^BOOM "},
+	})
+	require.False(t, start.IsError, "start returned error: %s", textOf(t, start))
+	id := extractShellID(t, textOf(t, start))
+
+	// Wait for the process to finish so every emitted line has had a
+	// chance to land in the event log.
+	waitForEventLine(t, deps, id, "exited  exit=0", 5*time.Second)
+
+	body := textOf(t, callWatchEvents(t, deps, map[string]any{"shell_id": id}))
+	assert.Contains(t, body, "earlier events dropped",
+		"expected event-cap drop notice, got body:\n%s", body)
+}
+
 func TestWatchProcess_IdleTimeoutKillsProcess(t *testing.T) {
 	requireBashForWatch(t)
 	deps, _ := newBGDeps(t)
@@ -264,6 +290,20 @@ func TestWatchProcessEvents_UnknownShellIDIsError(t *testing.T) {
 	res := callWatchEvents(t, deps, map[string]any{"shell_id": "not-a-real-id"})
 	assert.True(t, res.IsError)
 	assert.Contains(t, textOf(t, res), "unknown shell_id")
+}
+
+// Register* unit tests: exercise the tool-registration metadata path so
+// coverage reflects the schema wiring, not just the handler body that
+// HandleWatchProcess / HandleWatchProcessEvents exposes.
+func TestRegisterWatchProcess_PublishesBothTools(t *testing.T) {
+	reg := &fakeToolRegistrar{}
+	deps, _ := newBGDeps(t)
+	tools.RegisterWatchProcess(reg, deps)
+	tools.RegisterWatchProcessEvents(reg, deps)
+	_, hasStart := reg.handlers["watch_process"]
+	_, hasEvents := reg.handlers["watch_process_events"]
+	assert.True(t, hasStart, "expected watch_process to be registered")
+	assert.True(t, hasEvents, "expected watch_process_events to be registered")
 }
 
 func TestWatchProcessEvents_BashShellIDIsError(t *testing.T) {
