@@ -110,6 +110,22 @@ func TestScrub_SecretEnvAssignment(t *testing.T) {
 	assert.Contains(t, out, "normal=value")
 }
 
+func TestWithStats_ReportsHitsAndBytes(t *testing.T) {
+	in := "aws=AKIAIOSFODNN7EXAMPLE, also AKIAZZZZZZZZZZZZZZZZ"
+	out, stats := scrub.WithStats(in)
+	assert.Contains(t, out, "[REDACTED:aws-access-key]")
+	assert.Len(t, stats, 1)
+	assert.Equal(t, "aws-access-key", stats[0].Pattern)
+	assert.Equal(t, 2, stats[0].Hits)
+	// Each AWS key is 20 chars; 2 keys → 40 bytes redacted.
+	assert.Equal(t, 40, stats[0].BytesRedacted)
+}
+
+func TestWithStats_NoMatchReturnsEmptyStats(t *testing.T) {
+	_, stats := scrub.WithStats("clean text with no secrets")
+	assert.Empty(t, stats)
+}
+
 func TestScrub_MultiplePatternsOneInput(t *testing.T) {
 	in := "aws=AKIAIOSFODNN7EXAMPLE, gh=ghp_" + strings.Repeat("z", 36) + ", goog=AIza" + strings.Repeat("G", 35)
 	out := scrub.Scrub(in)

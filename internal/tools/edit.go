@@ -2,12 +2,14 @@ package tools
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/altairalabs/codegen-sandbox/internal/verify"
+	"github.com/altairalabs/codegen-sandbox/internal/workspace"
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
@@ -51,6 +53,11 @@ func HandleEdit(deps *Deps) func(context.Context, mcp.CallToolRequest) (*mcp.Cal
 		if err := atomicWrite(abs, []byte(updated)); err != nil {
 			return ErrorResult("write: %v", err), nil
 		}
+		// Record bytes of the replacement text multiplied by the occurrence
+		// count. This is the closest proxy to "bytes flipped" without a
+		// byte-level diff and keeps the gauge meaningful across both
+		// single and replace_all edits.
+		deps.Metrics.EditBytes(len(parsed.newStr) * count)
 		msg := fmt.Sprintf("replaced %d occurrence(s) in %s", count, parsed.filePath)
 		if feedback := postEditLintFeedback(ctx, deps.Workspace.Root(), abs); feedback != "" {
 			msg += "\n\n" + feedback
@@ -89,6 +96,9 @@ func parseEditArgs(args map[string]any) (*editArgs, *mcp.CallToolResult) {
 func resolveEditTarget(deps *Deps, filePath string) (string, *mcp.CallToolResult) {
 	abs, err := deps.Workspace.Resolve(filePath)
 	if err != nil {
+		if errors.Is(err, workspace.ErrOutsideWorkspace) {
+			deps.Metrics.PathViolation()
+		}
 		return "", ErrorResult("resolve path: %v", err)
 	}
 	info, err := os.Stat(abs)

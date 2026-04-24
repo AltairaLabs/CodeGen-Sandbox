@@ -45,6 +45,15 @@ func (r *ShellRegistry) Remove(id string) {
 	delete(r.shells, id)
 }
 
+// Len returns the current number of registered background shells. Feeds the
+// sandbox_background_shells Prometheus gauge; lock-held read is fine because
+// the registry is not a hot path.
+func (r *ShellRegistry) Len() int {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return len(r.shells)
+}
+
 // BackgroundShell tracks one background-mode Bash invocation. All fields
 // are guarded by mu; callers must use the accessor methods.
 type BackgroundShell struct {

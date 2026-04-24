@@ -27,14 +27,3 @@ func scrubMiddleware(handler mcpserver.ToolHandlerFunc) mcpserver.ToolHandlerFun
 		return res, nil
 	}
 }
-
-// scrubbingRegistrar implements tools.ToolAdder by forwarding AddTool to an
-// underlying MCPServer, wrapping the handler with scrubMiddleware first.
-type scrubbingRegistrar struct {
-	inner *mcpserver.MCPServer
-}
-
-// AddTool wraps handler with scrubMiddleware and forwards to inner.AddTool.
-func (r *scrubbingRegistrar) AddTool(tool mcp.Tool, handler mcpserver.ToolHandlerFunc) {
-	r.inner.AddTool(tool, scrubMiddleware(handler))
-}

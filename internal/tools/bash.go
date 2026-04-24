@@ -43,7 +43,7 @@ func HandleBash(deps *Deps) func(context.Context, mcp.CallToolRequest) (*mcp.Cal
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		args, _ := req.Params.Arguments.(map[string]any)
 
-		command, errRes := validateBashArgs(args)
+		command, errRes := validateBashArgs(deps, args)
 		if errRes != nil {
 			return errRes, nil
 		}
@@ -64,11 +64,12 @@ func HandleBash(deps *Deps) func(context.Context, mcp.CallToolRequest) (*mcp.Cal
 		if errRes != nil {
 			return errRes, nil
 		}
+		deps.Metrics.BashExit(exitCode)
 		return TextResult(formatBashOutput(out, exitCode, timedOut, timeoutSec)), nil
 	}
 }
 
-func validateBashArgs(args map[string]any) (string, *mcp.CallToolResult) {
+func validateBashArgs(deps *Deps, args map[string]any) (string, *mcp.CallToolResult) {
 	command, _ := args["command"].(string)
 	if command == "" {
 		return "", ErrorResult("command is required")
@@ -79,7 +80,8 @@ func validateBashArgs(args map[string]any) (string, *mcp.CallToolResult) {
 	if desc, _ := args["description"].(string); desc == "" {
 		return "", ErrorResult("description is required")
 	}
-	if reason := denyReason(command); reason != "" {
+	if token, reason := denyDetails(command); reason != "" {
+		deps.Metrics.DenylistHit(token)
 		return "", ErrorResult("command rejected: %s", reason)
 	}
 	return command, nil
@@ -183,10 +185,27 @@ var denyPattern = regexp.MustCompile(
 
 // denyReason returns a non-empty reason string if command matches the denylist.
 func denyReason(command string) string {
-	if m := denyPattern.FindStringSubmatch(command); m != nil {
-		return fmt.Sprintf("command uses denylisted token %q", m[1])
+	_, reason := denyDetails(command)
+	return reason
+}
+
+// denyDetails is like denyReason but also returns the matched denylist token
+// (normalised: e.g. mkfs.ext4 → mkfs) so the metrics layer can label a
+// sandbox_denylist_hits_total{token} series with a bounded value set.
+func denyDetails(command string) (token, reason string) {
+	m := denyPattern.FindStringSubmatch(command)
+	if m == nil {
+		return "", ""
 	}
-	return ""
+	raw := m[1]
+	// Normalise filesystem-maker variants (mkfs.ext4 / mkfs.xfs / ...) onto
+	// a single label so cardinality stays at one entry per denylist rule,
+	// not per filesystem type.
+	normalised := raw
+	if strings.HasPrefix(raw, "mkfs") {
+		normalised = "mkfs"
+	}
+	return normalised, fmt.Sprintf("command uses denylisted token %q", raw)
 }
 
 // handleBashBackground launches command as a background shell, registers it

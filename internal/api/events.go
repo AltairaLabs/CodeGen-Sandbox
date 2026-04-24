@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/altairalabs/codegen-sandbox/internal/metrics"
 	"github.com/altairalabs/codegen-sandbox/internal/workspace"
 	"github.com/fsnotify/fsnotify"
 )
@@ -25,7 +26,7 @@ type fsEvent struct {
 }
 
 // eventsHandler streams fsnotify events as SSE.
-func eventsHandler(ws *workspace.Workspace) http.Handler {
+func eventsHandler(ws *workspace.Workspace, m *metrics.Metrics) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		flusher, ok := w.(http.Flusher)
 		if !ok {
@@ -33,6 +34,9 @@ func eventsHandler(ws *workspace.Workspace) http.Handler {
 			return
 		}
 		writeSSEHeaders(w, flusher)
+
+		m.SSEStreamInc()
+		defer m.SSEStreamDec()
 
 		watcher, err := fsnotify.NewWatcher()
 		if err != nil {
