@@ -21,6 +21,9 @@ Files tagged `//go:build integration`. Drive the real external binaries the sand
 | --- | --- | --- |
 | `internal/lsp/integration_test.go` | `gopls` | Mock-vs-real wire drift (the original implementation returned no rename edits because gopls uses `documentChanges` not `changes`; this tier caught it) |
 | `internal/verify/integration_test.go` | `golangci-lint` | Lint-output format changes across linter versions |
+| `internal/verify/python_integration_test.go` | `ruff` | Same class of drift on `pythonDetector.ParseLint` (F-series format) |
+| `internal/verify/rust_integration_test.go` | `cargo clippy` (`--message-format=short`) | Same class of drift on `rustDetector.ParseLint` (severity-tagged one-liner format) |
+| `internal/verify/node_integration_test.go` | `eslint` (`--format=compact`) | Same class of drift on `nodeDetector.ParseLint` (eslint compact output) |
 | `internal/tools/integration_test.go` | `go` | Structured-failure parsing from live `go test -json` output |
 
 Run locally:
@@ -34,10 +37,13 @@ Binaries the tier needs on PATH:
 - `go` (always present in a Go dev environment)
 - `gopls` — `go install golang.org/x/tools/gopls@latest`
 - `golangci-lint` v2 — `brew install golangci-lint` / `apt install golangci-lint`
+- `ruff` — `pip install ruff`
+- `cargo clippy` — `rustup component add clippy`
+- `eslint` — `npm i -g eslint`
 
-Any missing binary **skips** the corresponding test with a clear message; it is not a failure. That keeps the target safe to run on a partially-provisioned machine while still being meaningful when all three are present.
+Any missing binary **skips** the corresponding test with a clear message; it is not a failure. That keeps the target safe to run on a partially-provisioned machine while still being meaningful when every tool is present.
 
-CI runs this tier in a dedicated `integration` job that installs each binary fresh.
+CI runs this tier in a dedicated `integration` job that installs each binary fresh, so the non-Go detectors are fully exercised on every PR rather than depending on contributor toolchains.
 
 ## Tier 3 — End-to-end MCP wire (`scripts/e2e-p0.sh`)
 
