@@ -316,6 +316,10 @@ func (c *Client) Rename(ctx context.Context, file string, line, col int, newName
 // file on disk, notify write error) are swallowed — the worst case is
 // the subsequent query returns an empty result, which the caller
 // already handles as "no definition".
+//
+// Pre-Start callers (the per-file cache state is observable in tests
+// without spawning a subprocess) get the cache entry but skip the
+// notify, because c.stdin is only populated after doStart.
 func (c *Client) ensureOpen(file string) {
 	abs := absFile(c.workspace, file)
 	c.openedMu.Lock()
@@ -327,6 +331,9 @@ func (c *Client) ensureOpen(file string) {
 	}
 	content, err := os.ReadFile(abs)
 	if err != nil {
+		return
+	}
+	if c.stdin == nil {
 		return
 	}
 	_ = c.notify("textDocument/didOpen", map[string]any{
