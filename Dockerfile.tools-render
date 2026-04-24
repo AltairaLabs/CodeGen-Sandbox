@@ -1,0 +1,118 @@
+# syntax=docker/dockerfile:1.7
+#
+# codegen-sandbox-tools-render — feature tools layer carrying diagram-render
+# binaries that sandbox features consume on PATH.
+#
+# Contents (on `node:22-bookworm-slim`, NOT scratch):
+#   /usr/bin/dot                          — graphviz layout engine
+#   /usr/local/bin/mmdc                   — mermaid-cli, wrapped to inject -p
+#   /usr/local/bin/mmdc-direct            — unwrapped mmdc (for non-root use)
+#   /usr/bin/chromium                     — headless browser mmdc drives
+#   /opt/render/puppeteer-config.json     — --no-sandbox config consumed
+#                                            by the /usr/local/bin/mmdc wrapper
+#
+# IMPORTANT — this layer breaks the scratch + COPY --from pattern used by
+# the other tools-* layers. mmdc is a Node.js script that drives a real
+# Chromium binary via Puppeteer to rasterise SVG; dot from graphviz is
+# dynamically linked against ~10 .so files (libgvc, libcgraph, libcdt,
+# libxdot, libpathplan, libgvpr, libgd, libfontconfig, libexpat, ...).
+# Neither fits the "single static binary on scratch" contract.
+#
+# Two supported operator shapes:
+#
+#   1. Sibling render container (recommended): run this image alongside
+#      the sandbox image, share the workspace via a volume, and have the
+#      sandbox shell out to `mmdc` / `dot` over docker exec or a tiny
+#      HTTP wrapper. Keeps the agent's runtime image small.
+#
+#   2. Adopt as base: use this image as the FROM in your sandbox image
+#      and `COPY --from=codegen-sandbox-tools:latest` the sandbox binary
+#      onto it. Ships ~700 MB (chromium dominates) but everything is in
+#      one place.
+#
+# See https://github.com/AltairaLabs/CodeGen-Sandbox/issues/26 for the
+# full feature-layers roadmap and https://github.com/AltairaLabs/CodeGen-Sandbox/issues/22
+# for the consumer-side render_mermaid / render_dot tools that motivate
+# this layer.
+#
+# Intentionally NOT shipped from this layer:
+#
+#   * PlantUML / d2 / structurizr-cli / asciidoctor — orthogonal diagram
+#     dialects with their own runtime requirements (JVM, Go binary, ruby).
+#     Keep this layer scoped to the two formats motivated by issue #22.
+
+FROM node:22-bookworm-slim
+
+ARG MERMAID_CLI_VERSION=11.4.2
+
+# Headless Chromium + graphviz + the bare-minimum fonts mermaid needs to
+# rasterise text without falling back to glyph boxes. fonts-liberation
+# covers the default mermaid font stack (Arial / Helvetica look-alikes);
+# fonts-noto-color-emoji covers the emoji glyphs mermaid v10+ accepts in
+# node labels.
+#
+# `--no-install-recommends` keeps the image at ~650 MB instead of ~900 MB
+# (chromium pulls in a long Recommends list of GUI helpers that are
+# useless in a headless container).
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+         ca-certificates \
+         chromium \
+         dumb-init \
+         fonts-liberation \
+         fonts-noto-color-emoji \
+         graphviz \
+    && rm -rf /var/lib/apt/lists/*
+
+# mermaid-cli installs Puppeteer as a transitive dep, which by default
+# downloads its own Chromium (~170 MB) on `npm install`. We use the
+# system chromium installed above instead, so suppress that download.
+ENV PUPPETEER_SKIP_DOWNLOAD=true \
+    PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+
+RUN npm install -g --omit=dev "@mermaid-js/mermaid-cli@${MERMAID_CLI_VERSION}" \
+    && npm cache clean --force
+
+# Puppeteer-launched Chromium refuses to run as root without
+# --no-sandbox, and containers run everything as root by default. Ship
+# a config file at /opt/render/puppeteer-config.json, then replace the
+# npm-installed `mmdc` shim with a wrapper that injects
+# `-p <config>` automatically — so `mmdc -i in.mmd -o out.svg` "just
+# works" in this image without callers remembering the flag. The
+# original npm shim stays available at /usr/local/bin/mmdc-direct for
+# operators running as a non-root user (where Chromium's default
+# sandbox should be left enabled).
+#
+# `mmdc --puppeteerConfigFile <file>` is the documented escape hatch;
+# `-p` is its short form. There is no PUPPETEER_CONFIG env var in
+# upstream Puppeteer or mermaid-cli — a wrapper is the only way to
+# bake this in.
+RUN mkdir -p /opt/render \
+    && printf '{\n  "args": ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"]\n}\n' \
+         > /opt/render/puppeteer-config.json \
+    && mv /usr/local/bin/mmdc /usr/local/bin/mmdc-direct \
+    && printf '%s\n' \
+         '#!/bin/sh' \
+         '# Wrapper around the npm-installed mmdc that injects the pre-baked' \
+         '# puppeteer config so Chromium runs with --no-sandbox under root in' \
+         '# this container. Operators running as a non-root user can bypass by' \
+         '# calling /usr/local/bin/mmdc-direct.' \
+         'exec /usr/local/bin/mmdc-direct -p /opt/render/puppeteer-config.json "$@"' \
+         > /usr/local/bin/mmdc \
+    && chmod 0755 /usr/local/bin/mmdc
+
+# Sanity-check both binaries at build time so a broken upstream is
+# caught at CI rather than at first agent invocation. `mmdc --version`
+# triggers the wrapper but does NOT launch Chromium, so it exercises
+# the wrapper plumbing without needing a working browser.
+RUN dot -V \
+    && mmdc --version \
+    && mmdc-direct --version
+
+WORKDIR /workspace
+
+# dumb-init reaps zombies left by Chromium child processes, which
+# Puppeteer leaks under load. Harmless when this image is used as a
+# `COPY --from` artifact source; required when used as a base or
+# sidecar render container.
+ENTRYPOINT ["dumb-init", "--"]
