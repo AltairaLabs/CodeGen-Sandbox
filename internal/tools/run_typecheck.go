@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/altairalabs/codegen-sandbox/internal/verify"
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
@@ -16,8 +15,9 @@ const (
 // RegisterRunTypecheck registers the run_typecheck tool.
 func RegisterRunTypecheck(s ToolAdder, deps *Deps) {
 	tool := mcp.NewTool("run_typecheck",
-		mcp.WithDescription("Run the project's type checker. Project type is detected from the workspace root (currently: Go via go.mod, uses `go vet`). Returns combined stdout+stderr plus a trailing 'exit: N' line."),
+		mcp.WithDescription("Run the project's type checker. Project type is detected from the workspace root (Go: `go vet`, Node: project tsc, Rust: cargo check; Python has no first-class typecheck wired). In a polyglot workspace pass `language` to pick one. Returns combined stdout+stderr plus a trailing 'exit: N' line."),
 		mcp.WithNumber("timeout", mcp.Description(fmt.Sprintf("Timeout in seconds. Default %d, clamped to a maximum of %d.", defaultRunTypecheckTimeoutSec, maxRunTypecheckTimeoutSec))),
+		withLanguageArg(),
 	)
 	s.AddTool(tool, HandleRunTypecheck(deps))
 }
@@ -25,12 +25,12 @@ func RegisterRunTypecheck(s ToolAdder, deps *Deps) {
 // HandleRunTypecheck returns the run_typecheck tool handler.
 func HandleRunTypecheck(deps *Deps) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		det := verify.Detect(deps.Workspace.Root())
-		if det == nil {
-			return ErrorResult("no supported project detected in workspace root"), nil
+		args, _ := req.Params.Arguments.(map[string]any)
+		det, errRes := dispatchByLanguage(deps, args)
+		if errRes != nil {
+			return errRes, nil
 		}
 
-		args, _ := req.Params.Arguments.(map[string]any)
 		timeoutSec := defaultRunTypecheckTimeoutSec
 		if v, ok := args["timeout"].(float64); ok && int(v) > 0 {
 			timeoutSec = int(v)

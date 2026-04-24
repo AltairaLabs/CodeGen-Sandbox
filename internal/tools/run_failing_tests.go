@@ -19,9 +19,10 @@ const (
 // RegisterRunFailingTests registers the run_failing_tests tool.
 func RegisterRunFailingTests(s ToolAdder, deps *Deps) {
 	tool := mcp.NewTool("run_failing_tests",
-		mcp.WithDescription("Rerun only the tests that failed in the most recent run_tests call in this session. Go only today; other languages surface a 'not supported' notice. On success, the structured-failure store is overwritten with the rerun's results so a follow-up last_test_failures call reflects the fresh state."),
+		mcp.WithDescription("Rerun only the tests that failed in the most recent run_tests call in this session. Go only today; other languages surface a 'not supported' notice. In a polyglot workspace pass `language` to pick one. On success, the structured-failure store is overwritten with the rerun's results so a follow-up last_test_failures call reflects the fresh state."),
 		mcp.WithNumber("limit", mcp.Description(fmt.Sprintf("Maximum distinct test names to include in the rerun filter. Default %d, clamped to %d.", defaultRerunLimit, maxRerunLimit))),
 		mcp.WithNumber("timeout", mcp.Description(fmt.Sprintf("Timeout in seconds. Default %d, clamped to a maximum of %d.", defaultRunTestsTimeoutSec, maxRunTestsTimeoutSec))),
+		withLanguageArg(),
 	)
 	s.AddTool(tool, HandleRunFailingTests(deps))
 }
@@ -37,9 +38,10 @@ func HandleRunFailingTests(deps *Deps) func(context.Context, mcp.CallToolRequest
 			return TextResult(msgNoRunYet), nil
 		}
 
-		det := verify.Detect(deps.Workspace.Root())
-		if det == nil {
-			return ErrorResult("no supported project detected in workspace root"), nil
+		args, _ := req.Params.Arguments.(map[string]any)
+		det, errRes := dispatchByLanguage(deps, args)
+		if errRes != nil {
+			return errRes, nil
 		}
 		if !detectorSupportsStructuredFailures(det) {
 			return TextResult(fmt.Sprintf("run_failing_tests: %s detector has no structured failures; rerun run_tests manually", det.Language())), nil
@@ -48,7 +50,6 @@ func HandleRunFailingTests(deps *Deps) func(context.Context, mcp.CallToolRequest
 			return TextResult(fmt.Sprintf("last run_tests had no failures — nothing to rerun (%s)", stored.Language)), nil
 		}
 
-		args, _ := req.Params.Arguments.(map[string]any)
 		limit := parseRerunLimit(args)
 		timeoutSec := parseRunTestsTimeout(args)
 

@@ -18,8 +18,9 @@ const (
 // RegisterRunLint registers the run_lint tool on the given MCP server.
 func RegisterRunLint(s ToolAdder, deps *Deps) {
 	tool := mcp.NewTool("run_lint",
-		mcp.WithDescription("Run the project's linter. Returns structured findings as 'file:line:col:rule: message' followed by 'N findings'. Project type is detected from the workspace root (currently: Go via go.mod, uses golangci-lint)."),
+		mcp.WithDescription("Run the project's linter. Returns structured findings as 'file:line:col:rule: message' followed by 'N findings'. Project type is detected from the workspace root (Go: golangci-lint, Node: eslint, Python: ruff, Rust: clippy). In a polyglot workspace pass `language` to pick one."),
 		mcp.WithNumber("timeout", mcp.Description(fmt.Sprintf("Timeout in seconds. Default %d, clamped to a maximum of %d.", defaultRunLintTimeoutSec, maxRunLintTimeoutSec))),
+		withLanguageArg(),
 	)
 	s.AddTool(tool, HandleRunLint(deps))
 }
@@ -27,15 +28,15 @@ func RegisterRunLint(s ToolAdder, deps *Deps) {
 // HandleRunLint returns the run_lint tool handler.
 func HandleRunLint(deps *Deps) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		det := verify.Detect(deps.Workspace.Root())
-		if det == nil {
-			return ErrorResult("no supported project detected in workspace root"), nil
+		args, _ := req.Params.Arguments.(map[string]any)
+		det, errRes := dispatchByLanguage(deps, args)
+		if errRes != nil {
+			return errRes, nil
 		}
 
-		args, _ := req.Params.Arguments.(map[string]any)
 		timeoutSec := parseLintTimeout(args)
 
-		findings, err := verify.Lint(ctx, deps.Workspace.Root(), timeoutSec)
+		findings, err := verify.LintWith(ctx, det, deps.Workspace.Root(), timeoutSec)
 		if errRes := lintErrorResult(det, findings, err); errRes != nil {
 			return errRes, nil
 		}
