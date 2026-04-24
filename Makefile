@@ -1,5 +1,6 @@
 .PHONY: build build-forward test test-integration lint fmt tidy \
-        docker-build-tools docker-build-tools-node docker-build docker-run docker-clean \
+        docker-build-tools docker-build-tools-node docker-build-tools-python \
+        docker-build docker-run docker-clean \
         docker-build-python docker-build-node docker-build-rust
 
 # The Go-language convenience image.
@@ -41,6 +42,10 @@ docker-build-tools:
 docker-build-tools-node:
 	docker build -f Dockerfile.tools-node -t codegen-sandbox-tools-node:dev .
 
+# Build the Python feature tools layer (scratch + /ruff).
+docker-build-tools-python:
+	docker build -f Dockerfile.tools-python -t codegen-sandbox-tools-python:dev .
+
 # Build the Go convenience image — requires docker-build-tools first (the
 # main Dockerfile COPYs from codegen-sandbox-tools:dev).
 docker-build: docker-build-tools
@@ -65,6 +70,8 @@ docker-build-rust: docker-build-tools
 
 docker-clean:
 	docker rmi $(IMAGE) $(TOOLS_IMAGE) \
+		codegen-sandbox-tools-node:dev \
+		codegen-sandbox-tools-python:dev \
 		codegen-sandbox-python:dev \
 		codegen-sandbox-node:dev \
 		codegen-sandbox-rust:dev 2>/dev/null || true
