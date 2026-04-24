@@ -173,6 +173,8 @@ func registerToolsForMode(reg tools.ToolAdder, deps *tools.Deps, readOnly bool) 
 	tools.RegisterASTEdits(reg, deps)
 	tools.RegisterLSPRename(reg, deps)
 	tools.RegisterRender(reg, deps)
+	tools.RegisterWatchProcess(reg, deps)
+	tools.RegisterWatchProcessEvents(reg, deps)
 }
 
 // resolveLSPCommand maps a Detector.Language() to its language-server argv.
