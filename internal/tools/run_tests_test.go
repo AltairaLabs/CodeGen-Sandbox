@@ -77,3 +77,25 @@ func TestRunTests_FailingModuleReturnsNonZeroExit(t *testing.T) {
 	assert.Contains(t, body, "intentional failure")
 	assert.NotContains(t, body, "exit: 0")
 }
+
+// TestRunTests_PopulatesCoverageIndex is the end-to-end glue test: a
+// real `go test -json -coverprofile=...` run against a seeded module
+// must leave the session coverage index populated so a subsequent
+// tests_covering call resolves.
+func TestRunTests_PopulatesCoverageIndex(t *testing.T) {
+	requireGo(t)
+	deps, root := newTestDeps(t)
+	deps.CoverageIndex = tools.NewCoverageIndex()
+	seedGoModule(t, root, true)
+
+	res := callRunTests(t, deps, map[string]any{})
+	require.False(t, res.IsError, "unexpected error: %s", textOf(t, res))
+	assert.False(t, deps.CoverageIndex.Empty(),
+		"run_tests should populate the coverage index on a passing Go run")
+
+	// The seeded module has "probe.go" covered by "TestAdd" in package
+	// "probe". Verify the query resolves.
+	refs := deps.CoverageIndex.TestsCovering("probe.go", 0)
+	require.NotEmpty(t, refs, "probe.go should have coverage attributed from TestAdd")
+	assert.Equal(t, "TestAdd", refs[0].TestName)
+}

@@ -74,14 +74,15 @@ func NewWithConfig(ws *workspace.Workspace, m *metrics.Metrics, cfg Config) (*Se
 	// order rationale.
 	reg := &observabilityRegistrar{inner: s.mcp, metrics: m, health: cfg.HealthTracker, tracer: cfg.Tracer, ws: s.ws}
 	deps := &tools.Deps{
-		Workspace:   s.ws,
-		Tracker:     s.tracker,
-		Shells:      s.shells,
-		TestResults: tools.NewTestResultStore(),
-		LSPRegistry: s.lspReg,
-		Secrets:     secrets.New(cfg.SecretsDir, os.Environ()),
-		Metrics:     m,
-		Health:      cfg.HealthTracker,
+		Workspace:     s.ws,
+		Tracker:       s.tracker,
+		Shells:        s.shells,
+		TestResults:   tools.NewTestResultStore(),
+		CoverageIndex: tools.NewCoverageIndex(),
+		LSPRegistry:   s.lspReg,
+		Secrets:       secrets.New(cfg.SecretsDir, os.Environ()),
+		Metrics:       m,
+		Health:        cfg.HealthTracker,
 	}
 	tools.RegisterRead(reg, deps)
 	tools.RegisterWrite(reg, deps)
@@ -96,6 +97,7 @@ func NewWithConfig(ws *workspace.Workspace, m *metrics.Metrics, cfg Config) (*Se
 	tools.RegisterRunTypecheck(reg, deps)
 	tools.RegisterLastTestFailures(reg, deps)
 	tools.RegisterRunFailingTests(reg, deps)
+	tools.RegisterTestsCovering(reg, deps)
 	tools.RegisterSnapshots(reg, deps)
 	tools.RegisterSearchCode(reg, deps)
 	tools.RegisterASTEdits(reg, deps)

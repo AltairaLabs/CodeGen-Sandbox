@@ -40,6 +40,11 @@ type Deps struct {
 	// Health is the agent-health tracker. Nil disables the per-verify-tool
 	// ObserveGreen / ObserveTestResult hooks; every method is nil-safe.
 	Health *health.Tracker
+	// CoverageIndex is the session-scoped (file,line)→tests inverse
+	// lookup populated by run_tests (Go) and queried by tests_covering.
+	// Nil-safe via receiver methods: handlers surface a clear "not
+	// configured" notice when absent.
+	CoverageIndex *CoverageIndex
 }
 
 // ErrorResult wraps a user-visible message as an MCP error result.
