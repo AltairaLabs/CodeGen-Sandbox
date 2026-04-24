@@ -7,12 +7,7 @@ func ExportParseCoverageProfile(body string) []ExportCoverageRecord {
 	records := parseCoverageProfile(body)
 	out := make([]ExportCoverageRecord, 0, len(records))
 	for _, r := range records {
-		out = append(out, ExportCoverageRecord{
-			File:      r.File,
-			Package:   r.Package,
-			StartLine: r.StartLine,
-			EndLine:   r.EndLine,
-		})
+		out = append(out, ExportCoverageRecord(r))
 	}
 	return out
 }

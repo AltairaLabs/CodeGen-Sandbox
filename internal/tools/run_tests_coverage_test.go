@@ -57,7 +57,7 @@ func TestAugmentTestCmd_GoWithIndexAddsFlag(t *testing.T) {
 	assert.Contains(t, got, "./...")
 }
 
-func TestCleanupCoverageProfile_EmptyPath(t *testing.T) {
+func TestCleanupCoverageProfile_EmptyPath(_ *testing.T) {
 	// Must not panic, must not call os.Remove on empty.
 	tools.ExportCleanupCoverageProfile("")
 }
