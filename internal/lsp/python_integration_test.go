@@ -77,6 +77,12 @@ func TestRealPyright_DefinitionReferencesRename(t *testing.T) {
 		_ = c.Shutdown(shutdownCtx)
 	}()
 
+	// pyright only knows about files we've opened — to surface cross-file
+	// References and Rename hits we have to didOpen probe_test.py too.
+	require.NoError(t, c.Start(ctx))
+	c.ensureOpen("probe.py")
+	c.ensureOpen("probe_test.py")
+
 	// Cursor: `def add(...)` — column 5 is the `a` of `add` (1-based:
 	// d=1 e=2 f=3 sp=4 a=5).
 	const (

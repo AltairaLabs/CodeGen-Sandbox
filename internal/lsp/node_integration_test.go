@@ -87,6 +87,13 @@ func TestRealTypeScriptLangserver_DefinitionReferencesRename(t *testing.T) {
 		_ = c.Shutdown(shutdownCtx)
 	}()
 
+	// tsserver only resolves cross-file References + Rename for files
+	// it's seen via didOpen — open probe_test.ts up front so the
+	// import graph is wired before the queries fire.
+	require.NoError(t, c.Start(ctx))
+	c.ensureOpen("probe.ts")
+	c.ensureOpen("probe_test.ts")
+
 	const (
 		file = "probe.ts"
 		line = 1

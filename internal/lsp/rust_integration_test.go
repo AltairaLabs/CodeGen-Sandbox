@@ -74,13 +74,16 @@ func TestRealRustAnalyzer_DefinitionReferencesRename(t *testing.T) {
 	root := seedRustWorkspace(t)
 
 	c := NewClient(root, []string{"rust-analyzer"})
-	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
 	defer func() {
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer shutdownCancel()
 		_ = c.Shutdown(shutdownCtx)
 	}()
+
+	require.NoError(t, c.Start(ctx))
+	c.ensureOpen("src/lib.rs")
 
 	// Cursor: `pub fn add(...)` — column 8 is the `a` of `add` (1-based:
 	// p=1 u=2 b=3 sp=4 f=5 n=6 sp=7 a=8). rust-analyzer's symbol resolver
@@ -93,11 +96,23 @@ func TestRealRustAnalyzer_DefinitionReferencesRename(t *testing.T) {
 	)
 
 	t.Run("Definition", func(t *testing.T) {
-		// Allow rust-analyzer's project bootstrap to complete on the first
-		// real call; nothing else is in flight.
-		locs, err := c.Definition(ctx, file, line, col)
+		// rust-analyzer runs `cargo metadata` + initial analysis on
+		// startup; depending on cache state and runner load this can
+		// take 30+ seconds before symbol queries return non-empty
+		// results. Poll Definition with a short backoff until either we
+		// see a hit or the per-call ctx deadline expires.
+		var locs []Location
+		var err error
+		deadline := time.Now().Add(90 * time.Second)
+		for time.Now().Before(deadline) {
+			locs, err = c.Definition(ctx, file, line, col)
+			if err == nil && len(locs) > 0 {
+				break
+			}
+			time.Sleep(500 * time.Millisecond)
+		}
 		require.NoError(t, err)
-		require.NotEmpty(t, locs, "rust-analyzer returned no definition for add")
+		require.NotEmpty(t, locs, "rust-analyzer returned no definition for add after 90s")
 		assert.Equal(t, file, locs[0].URI)
 		assert.Equal(t, line, locs[0].Line, "add is declared at line %d", line)
 	})
