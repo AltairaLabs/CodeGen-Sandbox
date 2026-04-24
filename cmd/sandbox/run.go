@@ -12,6 +12,7 @@ import (
 
 	"github.com/altairalabs/codegen-sandbox/internal/api"
 	"github.com/altairalabs/codegen-sandbox/internal/metrics"
+	"github.com/altairalabs/codegen-sandbox/internal/metrics/health"
 	"github.com/altairalabs/codegen-sandbox/internal/server"
 	"github.com/altairalabs/codegen-sandbox/internal/tracing"
 	"github.com/altairalabs/codegen-sandbox/internal/workspace"
@@ -21,6 +22,11 @@ import (
 // walks the workspace to refresh its size + file-count gauges. Kept at 30s
 // to align with typical Prometheus scrape intervals.
 const workspaceGaugeInterval = 30 * time.Second
+
+// healthGaugeInterval is the cadence at which the "time since last green"
+// gauge is refreshed. 1s is cheap (one atomic read + one gauge set) and
+// gives dashboards sub-scrape-interval smoothness without burning CPU.
+const healthGaugeInterval = 1 * time.Second
 
 const (
 	shutdownGraceSeconds = 10
@@ -46,6 +52,15 @@ type Config struct {
 	// exporter. Value is the standard OTEL_EXPORTER_OTLP_ENDPOINT URL
 	// (e.g. "http://otel-collector:4318"). Empty disables tracing entirely.
 	OTLPEndpoint string
+	// MetricsToolRepetitionWindow is the rolling wall-clock window over which
+	// agent-health counts (tool,args) repeats before emitting a burst.
+	MetricsToolRepetitionWindow time.Duration
+	// MetricsToolRepetitionThresh is the minimum number of (tool,args)
+	// repeats within the window before a repetition burst is emitted.
+	MetricsToolRepetitionThresh int
+	// MetricsErrorRateWindow is the rolling buffer size (count of recent tool
+	// calls) feeding the sandbox_agent_tool_error_rate gauge.
+	MetricsErrorRateWindow int
 }
 
 // apiEnabled reports whether any human-facing API surface is requested.
@@ -66,6 +81,7 @@ func Run(ctx context.Context, cfg Config) error {
 	if err != nil {
 		return err
 	}
+	healthTracker := maybeBuildHealth(cfg, metricsSurface)
 	tracer, tracerShutdown, err := tracing.New(ctx, cfg.OTLPEndpoint)
 	if err != nil {
 		return fmt.Errorf("tracing: %w", err)
@@ -74,7 +90,7 @@ func Run(ctx context.Context, cfg Config) error {
 		log.Printf("codegen-sandbox tracing enabled (otlp endpoint=%s)", cfg.OTLPEndpoint)
 	}
 
-	listeners, closer, err := buildListeners(ws, cfg, metricsSurface, tracer)
+	listeners, closer, err := buildListeners(ws, cfg, metricsSurface, healthTracker, tracer)
 	if err != nil {
 		return err
 	}
@@ -84,6 +100,9 @@ func Run(ctx context.Context, cfg Config) error {
 	defer cancelGauge()
 	if metricsSurface != nil {
 		go workspaceGaugeLoop(gaugeCtx, metricsSurface, ws, listeners.sandbox.Shells())
+	}
+	if healthTracker != nil {
+		go healthGaugeLoop(gaugeCtx, healthTracker)
 	}
 
 	errChans := listeners.serve()
@@ -121,8 +140,8 @@ func (l *listenerBundle) serve() []<-chan error {
 // buildListeners constructs every listener the Config asks for and logs
 // them. Packaging the construction here keeps Run's cognitive complexity
 // low.
-func buildListeners(ws *workspace.Workspace, cfg Config, m *metrics.Metrics, tracer *tracing.Tracer) (*listenerBundle, io.Closer, error) {
-	mcpSrv, sandbox, err := buildMCPServer(cfg.Addr, ws, cfg, m, tracer)
+func buildListeners(ws *workspace.Workspace, cfg Config, m *metrics.Metrics, h *health.Tracker, tracer *tracing.Tracer) (*listenerBundle, io.Closer, error) {
+	mcpSrv, sandbox, err := buildMCPServer(cfg.Addr, ws, cfg, m, h, tracer)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -156,8 +175,22 @@ func maybeBuildMetrics(cfg Config) (*metrics.Metrics, error) {
 	return m, nil
 }
 
-func buildMCPServer(addr string, ws *workspace.Workspace, cfg Config, m *metrics.Metrics, tracer *tracing.Tracer) (*http.Server, *server.Server, error) {
-	srv, err := server.NewWithConfig(ws, m, server.Config{SecretsDir: cfg.SecretsDir, Tracer: tracer})
+// maybeBuildHealth returns a live *health.Tracker iff metrics is enabled.
+// Agent-health is a pure extension of the Prometheus surface — with no
+// /metrics listener there is nowhere to publish, so the tracker is skipped.
+func maybeBuildHealth(cfg Config, m *metrics.Metrics) *health.Tracker {
+	if m == nil {
+		return nil
+	}
+	return health.New(m, health.Config{
+		RepetitionWindow:    cfg.MetricsToolRepetitionWindow,
+		RepetitionThreshold: cfg.MetricsToolRepetitionThresh,
+		ErrorRateWindow:     cfg.MetricsErrorRateWindow,
+	})
+}
+
+func buildMCPServer(addr string, ws *workspace.Workspace, cfg Config, m *metrics.Metrics, h *health.Tracker, tracer *tracing.Tracer) (*http.Server, *server.Server, error) {
+	srv, err := server.NewWithConfig(ws, m, server.Config{SecretsDir: cfg.SecretsDir, Tracer: tracer, HealthTracker: h})
 	if err != nil {
 		return nil, nil, fmt.Errorf("server: %w", err)
 	}
@@ -227,6 +260,26 @@ func workspaceGaugeLoop(ctx context.Context, m *metrics.Metrics, ws *workspace.W
 			return
 		case <-ticker.C:
 			refreshGauges(m, ws, shells)
+		}
+	}
+}
+
+// healthGaugeLoop refreshes the agent-health time-since-last-green gauge
+// on a 1s ticker. A ticker rather than a custom collector keeps the work
+// bounded — one atomic read + one gauge set per second regardless of scrape
+// cadence — and the 1s resolution gives dashboards a clean advancing line.
+func healthGaugeLoop(ctx context.Context, tracker *health.Tracker) {
+	// Prime immediately so the very first scrape (before the first tick)
+	// sees the current value rather than the construction-time zero.
+	tracker.UpdateTimeSinceLastGreen()
+	ticker := time.NewTicker(healthGaugeInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			tracker.UpdateTimeSinceLastGreen()
 		}
 	}
 }

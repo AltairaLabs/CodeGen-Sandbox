@@ -8,12 +8,16 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 )
 
 func main() {
 	addr := flag.String("addr", ":8080", "HTTP listen address for the MCP server")
 	apiAddr := flag.String("api-addr", "", "HTTP listen address for the human-facing API (empty = disabled)")
 	metricsAddr := flag.String("metrics-addr", "", "HTTP listen address for the Prometheus /metrics endpoint (empty = disabled)")
+	metricsToolRepetitionWindow := flag.Duration("metrics-tool-repetition-window", 10*time.Minute, "Time window over which agent-health repetition counts (tool,args) repeats")
+	metricsToolRepetitionThreshold := flag.Int("metrics-tool-repetition-threshold", 3, "Minimum (tool,args) repeats within the window before agent-health emits a repetition burst")
+	metricsErrorRateWindow := flag.Int("metrics-error-rate-window", 100, "Size of the rolling tool-outcome buffer feeding the agent-health tool_error_rate gauge")
 	otlpEndpoint := flag.String("otlp-endpoint", os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"), "OTLP-HTTP exporter URL for OpenTelemetry tracing (e.g. http://otel-collector:4318). Empty disables tracing; defaults to $OTEL_EXPORTER_OTLP_ENDPOINT.")
 	enableAPI := flag.Bool("enable-api", false, "mount /api/tree, /api/file, /api/events on -api-addr")
 	enableExec := flag.Bool("enable-exec", false, "mount /api/exec (WebSocket PTY) on -api-addr")
@@ -29,17 +33,20 @@ func main() {
 	defer cancel()
 
 	if err := Run(ctx, Config{
-		Addr:              *addr,
-		APIAddr:           *apiAddr,
-		MetricsAddr:       *metricsAddr,
-		WorkspaceRoot:     *root,
-		DevMode:           *devMode,
-		EnableAPI:         *enableAPI,
-		EnableExec:        *enableExec,
-		EnablePortForward: *enablePortForward,
-		EnableSSH:         *enableSSH,
-		SecretsDir:        *secretsDir,
-		OTLPEndpoint:      *otlpEndpoint,
+		Addr:                        *addr,
+		APIAddr:                     *apiAddr,
+		MetricsAddr:                 *metricsAddr,
+		MetricsToolRepetitionWindow: *metricsToolRepetitionWindow,
+		MetricsToolRepetitionThresh: *metricsToolRepetitionThreshold,
+		MetricsErrorRateWindow:      *metricsErrorRateWindow,
+		WorkspaceRoot:               *root,
+		DevMode:                     *devMode,
+		EnableAPI:                   *enableAPI,
+		EnableExec:                  *enableExec,
+		EnablePortForward:           *enablePortForward,
+		EnableSSH:                   *enableSSH,
+		SecretsDir:                  *secretsDir,
+		OTLPEndpoint:                *otlpEndpoint,
 	}); err != nil {
 		log.Fatal(err)
 	}
