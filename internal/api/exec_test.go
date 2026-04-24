@@ -46,7 +46,7 @@ func TestExecHandler_HappyPath_EchoAndExit(t *testing.T) {
 	ws, err := workspace.New(dir)
 	require.NoError(t, err)
 
-	srv := httptest.NewServer(execHandler(ws))
+	srv := httptest.NewServer(execHandler(ws, nil))
 	t.Cleanup(srv.Close)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -118,7 +118,7 @@ func TestExecHandler_ResizeFrame_NoError(t *testing.T) {
 	ws, err := workspace.New(dir)
 	require.NoError(t, err)
 
-	srv := httptest.NewServer(execHandler(ws))
+	srv := httptest.NewServer(execHandler(ws, nil))
 	t.Cleanup(srv.Close)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -160,7 +160,7 @@ func TestExecHandler_ClientDisconnectKillsProcess(t *testing.T) {
 
 	// pidCh captures the child process pid via a test-only hook.
 	pidCh := make(chan int, 1)
-	srv := httptest.NewServer(execHandlerWithHook(ws, func(pid int) { pidCh <- pid }))
+	srv := httptest.NewServer(execHandlerWithHook(ws, nil, func(pid int) { pidCh <- pid }))
 	t.Cleanup(srv.Close)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -206,7 +206,7 @@ func TestExecHandler_MalformedFrame_DoesNotCrash(t *testing.T) {
 	ws, err := workspace.New(dir)
 	require.NoError(t, err)
 
-	srv := httptest.NewServer(execHandler(ws))
+	srv := httptest.NewServer(execHandler(ws, nil))
 	t.Cleanup(srv.Close)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

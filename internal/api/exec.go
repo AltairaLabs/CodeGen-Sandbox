@@ -14,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/altairalabs/codegen-sandbox/internal/metrics"
 	"github.com/altairalabs/codegen-sandbox/internal/workspace"
 	"github.com/coder/websocket"
 	"github.com/creack/pty"
@@ -32,13 +33,13 @@ type execFrame struct {
 // execHandler returns an http.Handler that upgrades /api/exec to a
 // WebSocket, spawns /bin/bash inside ws.Root() as a pseudo-terminal, and
 // pipes stdin/stdout between the client and the PTY.
-func execHandler(ws *workspace.Workspace) http.Handler {
-	return execHandlerWithHook(ws, nil)
+func execHandler(ws *workspace.Workspace, m *metrics.Metrics) http.Handler {
+	return execHandlerWithHook(ws, m, nil)
 }
 
 // execHandlerWithHook is execHandler with a test hook invoked with the
 // bash child pid as soon as it starts. Production callers use execHandler.
-func execHandlerWithHook(ws *workspace.Workspace, onStart func(pid int)) http.Handler {
+func execHandlerWithHook(ws *workspace.Workspace, m *metrics.Metrics, onStart func(pid int)) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		c, err := websocket.Accept(w, r, nil)
 		if err != nil {
@@ -48,6 +49,9 @@ func execHandlerWithHook(ws *workspace.Workspace, onStart func(pid int)) http.Ha
 		// Use a named "normal closure" on the happy path so we don't leak
 		// the ungraceful frame from CloseNow.
 		defer func() { _ = c.CloseNow() }()
+
+		m.WSConnectionInc("exec")
+		defer m.WSConnectionDec("exec")
 
 		sub := "unknown"
 		if id, ok := FromContext(r.Context()); ok {

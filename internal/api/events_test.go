@@ -20,7 +20,7 @@ func TestEventsHandler_StreamsFileEvents(t *testing.T) {
 	ws, err := workspace.New(dir)
 	require.NoError(t, err)
 
-	srv := httptest.NewServer(eventsHandler(ws))
+	srv := httptest.NewServer(eventsHandler(ws, nil))
 	t.Cleanup(srv.Close)
 
 	resp, err := http.Get(srv.URL)
@@ -65,7 +65,7 @@ func TestEventsHandler_ClientDisconnect_Clean(t *testing.T) {
 	ws, err := workspace.New(dir)
 	require.NoError(t, err)
 
-	srv := httptest.NewServer(eventsHandler(ws))
+	srv := httptest.NewServer(eventsHandler(ws, nil))
 	t.Cleanup(srv.Close)
 
 	resp, err := http.Get(srv.URL)

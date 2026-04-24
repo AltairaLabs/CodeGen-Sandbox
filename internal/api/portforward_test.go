@@ -73,7 +73,7 @@ func dialPortForward(t *testing.T, srvURL string, port string) (*websocket.Conn,
 func TestPortForward_HappyPath_Echo(t *testing.T) {
 	port, _ := startEchoServer(t)
 
-	srv := httptest.NewServer(portForwardHandler())
+	srv := httptest.NewServer(portForwardHandler(nil))
 	t.Cleanup(srv.Close)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -100,7 +100,7 @@ func TestPortForward_HappyPath_Echo(t *testing.T) {
 }
 
 func TestPortForward_InvalidPort(t *testing.T) {
-	srv := httptest.NewServer(portForwardHandler())
+	srv := httptest.NewServer(portForwardHandler(nil))
 	t.Cleanup(srv.Close)
 
 	cases := []struct {
@@ -131,7 +131,7 @@ func TestPortForward_InvalidPort(t *testing.T) {
 func TestPortForward_DialFailure_ClosesCleanly(t *testing.T) {
 	port := freeClosedPort(t)
 
-	srv := httptest.NewServer(portForwardHandler())
+	srv := httptest.NewServer(portForwardHandler(nil))
 	t.Cleanup(srv.Close)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -153,7 +153,7 @@ func TestPortForward_DialFailure_ClosesCleanly(t *testing.T) {
 func TestPortForward_ClientClosesFirst_NoGoroutineLeak(t *testing.T) {
 	port, accepted := startEchoServer(t)
 
-	srv := httptest.NewServer(portForwardHandler())
+	srv := httptest.NewServer(portForwardHandler(nil))
 	t.Cleanup(srv.Close)
 
 	before := runtime.NumGoroutine()
@@ -212,7 +212,7 @@ func TestPortForward_TCPClosesFirst(t *testing.T) {
 		_ = conn.Close()
 	}()
 
-	srv := httptest.NewServer(portForwardHandler())
+	srv := httptest.NewServer(portForwardHandler(nil))
 	t.Cleanup(srv.Close)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

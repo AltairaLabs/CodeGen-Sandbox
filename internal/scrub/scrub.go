@@ -37,8 +37,38 @@ var patterns = []pattern{
 // `[REDACTED:<pattern-name>]`. Order of application is fixed; more specific
 // patterns fire first so an Anthropic key isn't labelled as an OpenAI key.
 func Scrub(text string) string {
+	out, _ := WithStats(text)
+	return out
+}
+
+// Stat captures one pattern's scrub contribution so callers (notably the
+// metrics middleware) can attribute hit counts + redacted bytes per pattern
+// without re-running the regex set themselves.
+type Stat struct {
+	Pattern       string
+	Hits          int
+	BytesRedacted int
+}
+
+// WithStats returns the scrubbed text and a per-pattern breakdown covering
+// every pattern that actually matched. The Stats slice is empty when no
+// patterns matched. BytesRedacted is the total length of the matched
+// secret token(s) — NOT the net string-length delta — so the metric
+// remains meaningful even when the `[REDACTED:...]` replacement is longer
+// than the original token (as it often is).
+func WithStats(text string) (string, []Stat) {
+	var stats []Stat
 	for _, p := range patterns {
+		matches := p.re.FindAllString(text, -1)
+		if len(matches) == 0 {
+			continue
+		}
+		redacted := 0
+		for _, mm := range matches {
+			redacted += len(mm)
+		}
+		stats = append(stats, Stat{Pattern: p.name, Hits: len(matches), BytesRedacted: redacted})
 		text = p.re.ReplaceAllString(text, "[REDACTED:"+p.name+"]")
 	}
-	return text
+	return text, stats
 }
