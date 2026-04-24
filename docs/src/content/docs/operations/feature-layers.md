@@ -136,7 +136,57 @@ The `--entrypoint` override is required because the final image targets `scratch
 
 ## `codegen-sandbox-tools-python`
 
-Coming soon — see [#26](https://github.com/AltairaLabs/CodeGen-Sandbox/issues/26). Will carry `ruff` as a statically-linked binary on scratch. Python LSP is deferred; see the [language-support page](/concepts/language-support/#feature--runtime-binary-matrix).
+**Image**: `ghcr.io/altairalabs/codegen-sandbox-tools-python`
+
+**Size**: ~30 MB (one native binary)
+
+**Binaries carried**:
+
+| Path | Purpose | Version |
+|---|---|---|
+| `/ruff` | Python linter + formatter — powers `run_lint` + post-edit feedback for Python projects | `0.8.4` |
+
+`ruff` is the official per-arch tarball from the [astral-sh/ruff](https://github.com/astral-sh/ruff/releases) GitHub releases (the `-gnu` variant).
+
+**Glibc required on the consumer base image.** The upstream `-gnu` tarball is dynamically linked against glibc (libc, libgcc_s, libpthread, etc.) — it will fail with "not found" on an alpine / musl base. Compose this layer onto a glibc base such as `python:3.12-slim`, `debian:bookworm-slim`, or `ubuntu:24.04`. (A `-musl` tarball is also published upstream; swap the URL in `Dockerfile.tools-python` if you need a musl build.)
+
+### Not included (and why)
+
+- **`pyright-langserver`** — published as an npm module and requires a Node.js runtime at execute time. Single-file bundling via `pkg` / `@vercel/ncc` / `bun build --compile` is a separate lift and is deferred to a follow-up image bump (same deferral as `typescript-language-server` and `prettier` on the Node layer). Until it lands, operators who want Python LSP can install it at build time with `npm i -g pyright` on top of a Node-capable base image.
+
+### Operator composition
+
+```dockerfile
+# python:3.12-slim is glibc (Debian). Do NOT use `*-alpine` — the upstream
+# ruff -gnu tarball is dynamically linked against glibc and will fail on musl.
+FROM python:3.12-slim
+
+# Core sandbox tools.
+COPY --from=ghcr.io/altairalabs/codegen-sandbox-tools:latest         /sandbox  /usr/local/bin/sandbox
+COPY --from=ghcr.io/altairalabs/codegen-sandbox-tools:latest         /rg       /usr/local/bin/rg
+
+# Python feature layer.
+COPY --from=ghcr.io/altairalabs/codegen-sandbox-tools-python:latest  /ruff     /usr/local/bin/ruff
+
+WORKDIR /workspace
+EXPOSE 8080
+ENTRYPOINT ["/usr/local/bin/sandbox"]
+CMD ["-addr=:8080", "-workspace=/workspace"]
+```
+
+### Verifying locally
+
+```bash
+docker buildx build -f Dockerfile.tools-python --load -t codegen-sandbox-tools-python:test .
+
+docker create --name probe --entrypoint /ruff codegen-sandbox-tools-python:test
+docker cp probe:/ruff /tmp/ruff
+docker rm probe
+
+docker run --rm --entrypoint /ruff codegen-sandbox-tools-python:test --version
+```
+
+The `--entrypoint` override is required because the final image targets `scratch` with no default CMD / ENTRYPOINT.
 
 ## `codegen-sandbox-tools-rust`
 
