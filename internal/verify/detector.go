@@ -49,6 +49,18 @@ type Detector interface {
 	// output, so keeping the input consistent avoids cross-path confusion
 	// when output is surfaced back to the agent.
 	FormatCheckCmd(file string) []string
+	// PackageManager returns a short identifier for the detected package
+	// manager (e.g. "npm", "pnpm", "yarn", "bun"). Only Node projects
+	// return a value today; every other detector returns "". Callers use
+	// the empty value as a signal that script-based invocations (e.g.
+	// run_script) do not apply to this language.
+	PackageManager() string
+	// ScriptRunner returns the argv prefix for "run a script" under this
+	// detector's package manager. For Node: npm → ["npm", "run"], yarn →
+	// ["yarn"] (yarn omits "run"), pnpm → ["pnpm", "run"], bun → ["bun",
+	// "run"]. Non-Node detectors return nil. A nil result means the tool
+	// surface for scripts (run_script) is not supported for this language.
+	ScriptRunner() []string
 }
 
 // TestFailure is one structured test failure extracted from a test runner's

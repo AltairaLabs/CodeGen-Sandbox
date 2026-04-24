@@ -69,3 +69,11 @@ func (*rustDetector) LSPCommand() []string { return nil }
 func (*rustDetector) FormatCheckCmd(file string) []string {
 	return []string{"rustfmt", "--check", file}
 }
+
+// PackageManager returns "" for Rust: cargo is the canonical package
+// manager and has no equivalent of package.json#scripts.
+func (*rustDetector) PackageManager() string { return "" }
+
+// ScriptRunner returns nil for Rust: no script-runner surface; cargo
+// subcommands are already first-class.
+func (*rustDetector) ScriptRunner() []string { return nil }

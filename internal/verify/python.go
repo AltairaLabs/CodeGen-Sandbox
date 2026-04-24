@@ -62,6 +62,15 @@ func (*pythonDetector) FormatCheckCmd(file string) []string {
 	return []string{"ruff", "format", "--check", "--diff", file}
 }
 
+// PackageManager returns "" for Python: the script-runner contract is
+// Node-only in v1. Python's equivalents (poetry run, pipenv run, hatch
+// run) are deferred to a follow-up.
+func (*pythonDetector) PackageManager() string { return "" }
+
+// ScriptRunner returns nil for Python: no package.json#scripts equivalent
+// today; run_script surfaces "not supported" for Python roots.
+func (*pythonDetector) ScriptRunner() []string { return nil }
+
 // parseLintRegex is the shared implementation for regex-based per-line
 // finding extraction. Named subexpressions `file`, `line`, `col`, `rule`,
 // `msg` are looked up; others are ignored.

@@ -95,6 +95,7 @@ func NewWithConfig(ws *workspace.Workspace, m *metrics.Metrics, cfg Config) (*Se
 	tools.RegisterRunTests(reg, deps)
 	tools.RegisterRunLint(reg, deps)
 	tools.RegisterRunTypecheck(reg, deps)
+	tools.RegisterRunScript(reg, deps)
 	tools.RegisterLastTestFailures(reg, deps)
 	tools.RegisterRunFailingTests(reg, deps)
 	tools.RegisterTestsCovering(reg, deps)

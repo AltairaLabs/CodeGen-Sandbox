@@ -12,9 +12,11 @@ A `Detector` (`internal/verify/detector.go`) represents a project type that the 
 | Detector | Marker file | Lint | Test | Typecheck |
 |---|---|---|---|---|
 | Go | `go.mod` | `golangci-lint run ./...` | `go test -json -count=1 ./...` | `go vet ./...` |
-| Node | `package.json` | `npx eslint .` (compact format) | `npm test --silent` | `npx tsc --noEmit` |
+| Node | `package.json` | `<pm> run lint` when defined, else `npx eslint .` (compact format) | `<pm> run test` when defined, else `npm test --silent` | `<pm> run typecheck` when defined, else `npx tsc --noEmit` |
 | Python | `pyproject.toml` / `setup.py` | `ruff check` | `pytest` | *(none)* |
 | Rust | `Cargo.toml` | `cargo clippy --message-format=short` | `cargo test` | `cargo check` |
+
+For Node projects, `<pm>` is the package manager the sandbox picks from lock-file presence: `pnpm-lock.yaml` → `pnpm`, `yarn.lock` → `yarn`, `bun.lockb` → `bun`, `package-lock.json` → `npm`, fallback `npm`. The [`run_script`](/tools/run-script/) tool uses the same mapping to invoke arbitrary entries from `package.json#scripts`.
 
 Every language-coupled tool — `run_lint`, `run_tests`, `run_typecheck`, post-edit lint feedback, and everything in the [P0/P1 roadmap](#planned-language-coupled-tools) below — dispatches through a `Detector`. No tool has a hardcoded language assumption.
 

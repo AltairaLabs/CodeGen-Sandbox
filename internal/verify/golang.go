@@ -52,3 +52,11 @@ func (*goDetector) LSPCommand() []string { return []string{"gopls", "serve"} }
 // coverage that subsumes a standalone format-check hook. Running both would
 // surface the same formatting drift twice.
 func (*goDetector) FormatCheckCmd(_ string) []string { return nil }
+
+// PackageManager returns "" for Go: modules are the native package system,
+// and the script-runner contract is Node-only in v1.
+func (*goDetector) PackageManager() string { return "" }
+
+// ScriptRunner returns nil for Go: no equivalent of package.json#scripts
+// in the Go ecosystem; run_script surfaces "not supported" for Go roots.
+func (*goDetector) ScriptRunner() []string { return nil }
