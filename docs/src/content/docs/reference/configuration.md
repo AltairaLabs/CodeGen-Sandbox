@@ -13,7 +13,9 @@ codegen-sandbox -addr=<host:port> -workspace=<path>
 
 | Flag | Default | Notes |
 |---|---|---|
-| `-addr` | `:8080` | HTTP listen address. Bind to `127.0.0.1:8080` for host-only access. |
+| `-addr` | `:8080` | HTTP listen address for the MCP server. Bind to `127.0.0.1:8080` for host-only access. |
+| `-api-addr` | `""` | HTTP listen address for the human-facing API (`/api/*`). Empty disables. |
+| `-metrics-addr` | `""` | HTTP listen address for the Prometheus `/metrics` endpoint. Empty disables. See [Metrics](/operations/metrics/). |
 | `-workspace` | `/workspace` | Absolute path to the agent's workspace root. Must exist and be a directory. |
 
 ## Environment variables

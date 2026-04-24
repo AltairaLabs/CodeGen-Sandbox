@@ -12,7 +12,7 @@ func TestServer_New(t *testing.T) {
 	ws, err := workspace.New(t.TempDir())
 	require.NoError(t, err)
 
-	srv, err := server.New(ws)
+	srv, err := server.New(ws, nil)
 	require.NoError(t, err)
 	require.NotNil(t, srv)
 	require.NotNil(t, srv.Handler())

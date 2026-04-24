@@ -7,12 +7,19 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"reflect"
 	"time"
 
 	"github.com/altairalabs/codegen-sandbox/internal/api"
+	"github.com/altairalabs/codegen-sandbox/internal/metrics"
 	"github.com/altairalabs/codegen-sandbox/internal/server"
 	"github.com/altairalabs/codegen-sandbox/internal/workspace"
 )
+
+// workspaceGaugeInterval sets the cadence at which the metrics listener
+// walks the workspace to refresh its size + file-count gauges. Kept at 30s
+// to align with typical Prometheus scrape intervals.
+const workspaceGaugeInterval = 30 * time.Second
 
 const (
 	shutdownGraceSeconds = 10
@@ -24,6 +31,7 @@ const (
 type Config struct {
 	Addr              string
 	APIAddr           string
+	MetricsAddr       string
 	WorkspaceRoot     string
 	DevMode           bool
 	EnableAPI         bool
@@ -37,44 +45,106 @@ func (c Config) apiEnabled() bool {
 	return c.APIAddr != "" && (c.EnableAPI || c.EnableExec || c.EnablePortForward || c.EnableSSH)
 }
 
-// Run starts the sandbox MCP server on cfg.Addr and, if cfg.apiEnabled is
-// true, a second HTTP listener on cfg.APIAddr. Both listeners drain on ctx
+// Run starts the sandbox MCP server on cfg.Addr, the human-facing API
+// listener on cfg.APIAddr (if any flag enables it), and the Prometheus
+// listener on cfg.MetricsAddr (if set). All listeners drain on ctx
 // cancellation within a bounded grace window.
 func Run(ctx context.Context, cfg Config) error {
 	ws, err := workspace.New(cfg.WorkspaceRoot)
 	if err != nil {
 		return fmt.Errorf("workspace: %w", err)
 	}
-	mcpSrv, err := buildMCPServer(cfg.Addr, ws)
+	metricsSurface, err := maybeBuildMetrics(cfg)
 	if err != nil {
 		return err
 	}
-	log.Printf("codegen-sandbox listening on %s (workspace=%s)", cfg.Addr, ws.Root())
 
-	apiSrv, apiCloser, err := buildAPIServer(ws, cfg)
+	listeners, closer, err := buildListeners(ws, cfg, metricsSurface)
 	if err != nil {
 		return err
+	}
+
+	// Workspace-size + shell-count refresher lives as long as metrics is on.
+	gaugeCtx, cancelGauge := context.WithCancel(context.Background())
+	defer cancelGauge()
+	if metricsSurface != nil {
+		go workspaceGaugeLoop(gaugeCtx, metricsSurface, ws, listeners.sandbox.Shells())
+	}
+
+	errChans := listeners.serve()
+	if err := waitForShutdown(ctx, errChans); err != nil {
+		return err
+	}
+	return shutdownAll(listeners.servers(), closer, errChans)
+}
+
+// listenerBundle groups the three optional listeners + the bound sandbox
+// server so Run can pass them around as a single value.
+type listenerBundle struct {
+	mcp     *http.Server
+	api     *http.Server
+	metrics *http.Server
+	sandbox *server.Server
+}
+
+func (l *listenerBundle) servers() []*http.Server {
+	return []*http.Server{l.mcp, l.api, l.metrics}
+}
+
+func (l *listenerBundle) serve() []<-chan error {
+	out := make([]<-chan error, 0, 3)
+	for _, s := range l.servers() {
+		if s == nil {
+			out = append(out, nil)
+			continue
+		}
+		out = append(out, serve(s))
+	}
+	return out
+}
+
+// buildListeners constructs every listener the Config asks for and logs
+// them. Packaging the construction here keeps Run's cognitive complexity
+// low.
+func buildListeners(ws *workspace.Workspace, cfg Config, m *metrics.Metrics) (*listenerBundle, io.Closer, error) {
+	mcpSrv, sandbox, err := buildMCPServer(cfg.Addr, ws, m)
+	if err != nil {
+		return nil, nil, err
+	}
+	log.Printf("codegen-sandbox listening on %s (workspace=%s)", cfg.Addr, ws.Root())
+
+	apiSrv, apiCloser, err := buildAPIServer(ws, cfg, m)
+	if err != nil {
+		return nil, nil, err
 	}
 	if apiSrv != nil {
 		log.Printf("codegen-sandbox api listening on %s", cfg.APIAddr)
 	}
 
-	mcpErr := serve(mcpSrv)
-	var apiErr chan error
-	if apiSrv != nil {
-		apiErr = serve(apiSrv)
+	metricsSrv := buildMetricsServer(cfg.MetricsAddr, m)
+	if metricsSrv != nil {
+		log.Printf("codegen-sandbox metrics listening on %s", cfg.MetricsAddr)
 	}
 
-	if err := waitForShutdown(ctx, mcpErr, apiErr); err != nil {
-		return err
-	}
-	return shutdownAll(mcpSrv, apiSrv, apiCloser, mcpErr, apiErr)
+	return &listenerBundle{mcp: mcpSrv, api: apiSrv, metrics: metricsSrv, sandbox: sandbox}, apiCloser, nil
 }
 
-func buildMCPServer(addr string, ws *workspace.Workspace) (*http.Server, error) {
-	srv, err := server.New(ws)
+// maybeBuildMetrics returns a live *metrics.Metrics iff MetricsAddr is set.
+func maybeBuildMetrics(cfg Config) (*metrics.Metrics, error) {
+	if cfg.MetricsAddr == "" {
+		return nil, nil
+	}
+	m, err := metrics.New()
 	if err != nil {
-		return nil, fmt.Errorf("server: %w", err)
+		return nil, fmt.Errorf("metrics: %w", err)
+	}
+	return m, nil
+}
+
+func buildMCPServer(addr string, ws *workspace.Workspace, m *metrics.Metrics) (*http.Server, *server.Server, error) {
+	srv, err := server.New(ws, m)
+	if err != nil {
+		return nil, nil, fmt.Errorf("server: %w", err)
 	}
 	// No WriteTimeout — SSE streams are long-lived.
 	return &http.Server{
@@ -82,10 +152,10 @@ func buildMCPServer(addr string, ws *workspace.Workspace) (*http.Server, error) 
 		Handler:           srv.Handler(),
 		ReadHeaderTimeout: readHeaderTimeout,
 		IdleTimeout:       idleTimeout,
-	}, nil
+	}, srv, nil
 }
 
-func buildAPIServer(ws *workspace.Workspace, cfg Config) (*http.Server, io.Closer, error) {
+func buildAPIServer(ws *workspace.Workspace, cfg Config, m *metrics.Metrics) (*http.Server, io.Closer, error) {
 	if !cfg.apiEnabled() {
 		return nil, nil, nil
 	}
@@ -96,6 +166,7 @@ func buildAPIServer(ws *workspace.Workspace, cfg Config) (*http.Server, io.Close
 		EnableExec:        cfg.EnableExec,
 		EnablePortForward: cfg.EnablePortForward,
 		EnableSSH:         cfg.EnableSSH,
+		Metrics:           m,
 	})
 	if err != nil {
 		return nil, nil, fmt.Errorf("api: %w", err)
@@ -108,23 +179,78 @@ func buildAPIServer(ws *workspace.Workspace, cfg Config) (*http.Server, io.Close
 	}, closer, nil
 }
 
-// waitForShutdown blocks until a listener crashes or ctx fires. Returns the
-// listener error (crash) or nil (graceful shutdown signal received).
-func waitForShutdown(ctx context.Context, mcpErr, apiErr <-chan error) error {
-	select {
-	case err := <-mcpErr:
-		return err
-	case err := <-apiErrOrNil(apiErr):
-		return err
-	case <-ctx.Done():
-		log.Printf("shutdown signal received; draining up to %ds", shutdownGraceSeconds)
+// buildMetricsServer returns a minimal /metrics listener, or nil if
+// MetricsAddr is empty or the Metrics surface wasn't constructed.
+func buildMetricsServer(addr string, m *metrics.Metrics) *http.Server {
+	if addr == "" || m == nil {
 		return nil
+	}
+	mux := http.NewServeMux()
+	mux.Handle("/metrics", m.Handler())
+	return &http.Server{
+		Addr:              addr,
+		Handler:           mux,
+		ReadHeaderTimeout: readHeaderTimeout,
+		IdleTimeout:       idleTimeout,
 	}
 }
 
-// shutdownAll drains both servers and the optional API closer within the
-// shared grace window, then waits for the listen goroutines.
-func shutdownAll(mcpSrv, apiSrv *http.Server, apiCloser io.Closer, mcpErr, apiErr <-chan error) error {
+// workspaceGaugeLoop periodically refreshes the workspace-size and
+// background-shell gauges until ctx is cancelled. A ticker rather than a
+// custom Prometheus collector keeps the walk predictable (exactly one every
+// 30s, regardless of scrape cadence) — Collect() would re-walk on every
+// scrape, and a fast scraper could turn a dirt-cheap gauge into a CPU hog.
+func workspaceGaugeLoop(ctx context.Context, m *metrics.Metrics, ws *workspace.Workspace, shells interface{ Len() int }) {
+	// Prime the gauge immediately so scrapers see a real value on the very
+	// first scrape rather than zero.
+	refreshGauges(m, ws, shells)
+	ticker := time.NewTicker(workspaceGaugeInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			refreshGauges(m, ws, shells)
+		}
+	}
+}
+
+func refreshGauges(m *metrics.Metrics, ws *workspace.Workspace, shells interface{ Len() int }) {
+	if ws != nil {
+		b, n := ws.Size()
+		m.SetWorkspace(b, n)
+	}
+	if shells != nil {
+		m.SetBackgroundShells(shells.Len())
+	}
+}
+
+// waitForShutdown blocks until a listener crashes or ctx fires. The errChans
+// slice is ordered [mcp, api, metrics]; nil entries are skipped so the
+// reflect.Select fan-in only watches live listeners.
+func waitForShutdown(ctx context.Context, errChans []<-chan error) error {
+	cases := []reflect.SelectCase{{Dir: reflect.SelectRecv, Chan: reflect.ValueOf(ctx.Done())}}
+	for _, ch := range errChans {
+		if ch == nil {
+			continue
+		}
+		cases = append(cases, reflect.SelectCase{Dir: reflect.SelectRecv, Chan: reflect.ValueOf(ch)})
+	}
+	idx, v, _ := reflect.Select(cases)
+	if idx == 0 {
+		log.Printf("shutdown signal received; draining up to %ds", shutdownGraceSeconds)
+		return nil
+	}
+	if err, _ := v.Interface().(error); err != nil {
+		return err
+	}
+	return nil
+}
+
+// shutdownAll drains every non-nil server and the optional API closer within
+// the shared grace window, then waits for the listen goroutines.
+func shutdownAll(servers []*http.Server, apiCloser io.Closer, errChans []<-chan error) error {
 	// Deliberate detach: we only reach this branch because the caller's ctx
 	// already fired. Using ctx here would give http.Server.Shutdown a
 	// pre-cancelled context and collapse the grace window to zero.
@@ -132,12 +258,12 @@ func shutdownAll(mcpSrv, apiSrv *http.Server, apiCloser io.Closer, mcpErr, apiEr
 	defer cancel()
 
 	var firstErr error
-	if err := mcpSrv.Shutdown(shutdownCtx); err != nil {
-		firstErr = fmt.Errorf("mcp shutdown: %w", err)
-	}
-	if apiSrv != nil {
-		if err := apiSrv.Shutdown(shutdownCtx); err != nil && firstErr == nil {
-			firstErr = fmt.Errorf("api shutdown: %w", err)
+	for _, s := range servers {
+		if s == nil {
+			continue
+		}
+		if err := s.Shutdown(shutdownCtx); err != nil && firstErr == nil {
+			firstErr = fmt.Errorf("shutdown %s: %w", s.Addr, err)
 		}
 	}
 	if apiCloser != nil {
@@ -145,11 +271,11 @@ func shutdownAll(mcpSrv, apiSrv *http.Server, apiCloser io.Closer, mcpErr, apiEr
 			firstErr = fmt.Errorf("api closer: %w", err)
 		}
 	}
-	if err := <-mcpErr; err != nil && firstErr == nil {
-		firstErr = err
-	}
-	if apiSrv != nil {
-		if err := <-apiErr; err != nil && firstErr == nil {
+	for _, ch := range errChans {
+		if ch == nil {
+			continue
+		}
+		if err := <-ch; err != nil && firstErr == nil {
 			firstErr = err
 		}
 	}
@@ -168,13 +294,4 @@ func serve(s *http.Server) chan error {
 		ch <- err
 	}()
 	return ch
-}
-
-// apiErrOrNil returns a channel that never fires if apiErr is nil. Allows a
-// single select statement to work with an optional second listener.
-func apiErrOrNil(apiErr <-chan error) <-chan error {
-	if apiErr == nil {
-		return nil
-	}
-	return apiErr
 }

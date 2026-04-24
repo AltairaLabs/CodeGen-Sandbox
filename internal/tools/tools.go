@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/altairalabs/codegen-sandbox/internal/lsp"
+	"github.com/altairalabs/codegen-sandbox/internal/metrics"
 	"github.com/altairalabs/codegen-sandbox/internal/workspace"
 	"github.com/mark3labs/mcp-go/mcp"
 	mcpserver "github.com/mark3labs/mcp-go/server"
@@ -27,6 +28,9 @@ type Deps struct {
 	// (workspace, language) pair. May be nil in tests that don't exercise
 	// LSP navigation.
 	LSPRegistry *lsp.Registry
+	// Metrics is the Prometheus surface; nil disables instrumentation.
+	// Every *metrics.Metrics method is nil-safe so call sites stay clean.
+	Metrics *metrics.Metrics
 }
 
 // ErrorResult wraps a user-visible message as an MCP error result.

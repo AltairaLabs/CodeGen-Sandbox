@@ -3,10 +3,12 @@ package tools
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
 
+	"github.com/altairalabs/codegen-sandbox/internal/workspace"
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
@@ -44,6 +46,7 @@ func HandleRead(deps *Deps) func(context.Context, mcp.CallToolRequest) (*mcp.Cal
 		}
 
 		deps.Tracker.MarkRead(abs)
+		deps.Metrics.ReadBytes(len(body))
 		return TextResult(body), nil
 	}
 }
@@ -67,6 +70,9 @@ func parseReadArgs(args map[string]any) (filePath string, offset, limit int, err
 func resolveReadPath(deps *Deps, filePath string) (string, *mcp.CallToolResult) {
 	abs, err := deps.Workspace.Resolve(filePath)
 	if err != nil {
+		if errors.Is(err, workspace.ErrOutsideWorkspace) {
+			deps.Metrics.PathViolation()
+		}
 		return "", ErrorResult("resolve path: %v", err)
 	}
 	info, err := os.Stat(abs)

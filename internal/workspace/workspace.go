@@ -67,6 +67,36 @@ func (w *Workspace) Resolve(p string) (string, error) {
 	return resolved, nil
 }
 
+// Size walks the workspace and returns (totalBytes, totalFiles), skipping
+// well-known directories that bloat the count without being part of the
+// agent's code surface (.git, node_modules). Permission errors and
+// mid-walk removals are tolerated — this feeds a metrics gauge, so returning
+// a best-effort sample is preferable to erroring out.
+func (w *Workspace) Size() (bytes int64, files int64) {
+	_ = filepath.WalkDir(w.root, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			// Missing entries / permission faults are swallowed; the gauge
+			// is a best-effort snapshot, not an inventory audit.
+			return nil
+		}
+		if d.IsDir() {
+			base := filepath.Base(path)
+			if path != w.root && (base == ".git" || base == "node_modules") {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		info, err := d.Info()
+		if err != nil {
+			return nil
+		}
+		bytes += info.Size()
+		files++
+		return nil
+	})
+	return bytes, files
+}
+
 // evalSymlinksAllowMissing behaves like filepath.EvalSymlinks but tolerates a
 // path whose tail components do not exist yet. It walks up until it finds an
 // existing ancestor, resolves that, then rejoins the missing suffix.

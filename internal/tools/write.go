@@ -2,11 +2,13 @@ package tools
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"time"
 
+	"github.com/altairalabs/codegen-sandbox/internal/workspace"
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
@@ -32,6 +34,9 @@ func HandleWrite(deps *Deps) func(context.Context, mcp.CallToolRequest) (*mcp.Ca
 
 		abs, err := deps.Workspace.Resolve(filePath)
 		if err != nil {
+			if errors.Is(err, workspace.ErrOutsideWorkspace) {
+				deps.Metrics.PathViolation()
+			}
 			return ErrorResult("resolve path: %v", err), nil
 		}
 
@@ -48,6 +53,7 @@ func HandleWrite(deps *Deps) func(context.Context, mcp.CallToolRequest) (*mcp.Ca
 		}
 
 		deps.Tracker.MarkRead(abs)
+		deps.Metrics.WriteBytes(len(content))
 		return TextResult(fmt.Sprintf("wrote %d bytes to %s", len(content), filePath)), nil
 	}
 }

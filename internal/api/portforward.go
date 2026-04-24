@@ -12,6 +12,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/altairalabs/codegen-sandbox/internal/metrics"
 	"github.com/coder/websocket"
 )
 
@@ -30,7 +31,7 @@ const (
 // There is no host query parameter and none can be added — this endpoint must
 // never become an outbound SSRF proxy. Only services listening inside the
 // sandbox are reachable.
-func portForwardHandler() http.Handler {
+func portForwardHandler(m *metrics.Metrics) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		port, ok := parsePortForwardPort(r.URL.Query().Get("port"))
 		if !ok {
@@ -49,6 +50,9 @@ func portForwardHandler() http.Handler {
 			return
 		}
 		defer func() { _ = c.CloseNow() }()
+
+		m.WSConnectionInc("port-forward")
+		defer m.WSConnectionDec("port-forward")
 
 		start := time.Now()
 
