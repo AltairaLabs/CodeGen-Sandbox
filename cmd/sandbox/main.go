@@ -20,6 +20,7 @@ func main() {
 	enableSSH := flag.Bool("enable-ssh", false, "start embedded SSH server on 127.0.0.1 and mount /api/ssh-authorized-keys + /api/ssh-port on -api-addr")
 	root := flag.String("workspace", "/workspace", "workspace root (absolute path)")
 	devMode := flag.Bool("dev-mode", false, "trust-no-headers dev fallback: inject a placeholder identity when forwarded headers are absent")
+	secretsDir := flag.String("secrets-dir", "", "directory of one-file-per-secret mounts (e.g. k8s Secret volume). Empty disables the file source; CODEGEN_SANDBOX_SECRET_* env vars still work.")
 	flag.Parse()
 
 	// SIGINT for Ctrl-C; SIGTERM for docker stop and most orchestrators.
@@ -36,6 +37,7 @@ func main() {
 		EnableExec:        *enableExec,
 		EnablePortForward: *enablePortForward,
 		EnableSSH:         *enableSSH,
+		SecretsDir:        *secretsDir,
 	}); err != nil {
 		log.Fatal(err)
 	}

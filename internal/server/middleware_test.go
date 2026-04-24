@@ -63,3 +63,23 @@ func TestScrubMiddleware_LeavesCleanTextAlone(t *testing.T) {
 	tc := res.Content[0].(mcp.TextContent)
 	assert.Equal(t, "nothing secret here", tc.Text)
 }
+
+// Defense in depth: if a secret value happens to match a known scrub shape
+// (e.g. operator mounts a Brave API key literal), the `secret` tool's
+// response is still redacted on the way out of the MCP server. The caller
+// is supposed to feed the return into the downstream API directly, not log
+// it — so redaction here is a belt on the existing braces.
+func TestScrubMiddleware_RedactsSecretToolOutput(t *testing.T) {
+	// Shape matches the github-pat pattern registered in internal/scrub.
+	leakedShape := "ghp_" + "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	inner := func(_ context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		return mcp.NewToolResultText(leakedShape), nil
+	}
+	wrapped := scrubMiddleware(inner)
+
+	res, err := wrapped(context.Background(), mcp.CallToolRequest{})
+	require.NoError(t, err)
+	tc := res.Content[0].(mcp.TextContent)
+	assert.NotContains(t, tc.Text, leakedShape)
+	assert.Contains(t, tc.Text, "[REDACTED:github-pat]")
+}

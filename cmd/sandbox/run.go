@@ -38,6 +38,9 @@ type Config struct {
 	EnableExec        bool
 	EnablePortForward bool
 	EnableSSH         bool
+	// SecretsDir enables the file source of the `secret` tool. See
+	// internal/secrets for the full contract.
+	SecretsDir string
 }
 
 // apiEnabled reports whether any human-facing API surface is requested.
@@ -107,7 +110,7 @@ func (l *listenerBundle) serve() []<-chan error {
 // them. Packaging the construction here keeps Run's cognitive complexity
 // low.
 func buildListeners(ws *workspace.Workspace, cfg Config, m *metrics.Metrics) (*listenerBundle, io.Closer, error) {
-	mcpSrv, sandbox, err := buildMCPServer(cfg.Addr, ws, m)
+	mcpSrv, sandbox, err := buildMCPServer(cfg.Addr, ws, cfg, m)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -141,8 +144,8 @@ func maybeBuildMetrics(cfg Config) (*metrics.Metrics, error) {
 	return m, nil
 }
 
-func buildMCPServer(addr string, ws *workspace.Workspace, m *metrics.Metrics) (*http.Server, *server.Server, error) {
-	srv, err := server.New(ws, m)
+func buildMCPServer(addr string, ws *workspace.Workspace, cfg Config, m *metrics.Metrics) (*http.Server, *server.Server, error) {
+	srv, err := server.NewWithConfig(ws, m, server.Config{SecretsDir: cfg.SecretsDir})
 	if err != nil {
 		return nil, nil, fmt.Errorf("server: %w", err)
 	}
