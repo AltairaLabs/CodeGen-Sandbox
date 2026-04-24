@@ -418,6 +418,47 @@ jobs:
       - name: Run integration suite
         run: make test-integration
 
+  e2e-smoke:
+    name: End-to-end P0 tool chain (scripts/e2e-p0.sh)
+    runs-on: ubuntu-latest
+    needs: go
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      # The script exercises the full P0 tool surface against a real
+      # bin/sandbox over the MCP HTTP+SSE wire. Required binaries on PATH:
+      #   - bash / curl / jq / git — always present on ubuntu-latest.
+      #   - go — from setup-go@v5 above.
+      #   - gopls — installed here so the LSP steps (find_definition /
+      #     find_references / rename_symbol) actually run instead of skipping.
+      #   - ripgrep — installed via apt for the search_code step.
+      - name: Install gopls
+        run: go install golang.org/x/tools/gopls@latest
+
+      - name: Install ripgrep
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ripgrep
+
+      - name: Verify e2e toolchain
+        run: |
+          go version
+          gopls version
+          rg --version | head -1
+          jq --version
+          curl --version | head -1
+
+      - name: Build sandbox binary
+        run: make build
+
+      - name: Run e2e-p0.sh
+        run: bash scripts/e2e-p0.sh
+
   docker-integration:
     name: Docker image full-stack smoke
     runs-on: ubuntu-latest
