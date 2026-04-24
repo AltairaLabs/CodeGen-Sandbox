@@ -1,5 +1,5 @@
 .PHONY: build build-forward test test-integration lint fmt tidy \
-        docker-build-tools docker-build docker-run docker-clean \
+        docker-build-tools docker-build-tools-node docker-build docker-run docker-clean \
         docker-build-python docker-build-node docker-build-rust
 
 # The Go-language convenience image.
@@ -36,6 +36,10 @@ tidy:
 # Build the minimal artifact image (scratch + /sandbox + /rg).
 docker-build-tools:
 	docker build -f Dockerfile.tools -t $(TOOLS_IMAGE) .
+
+# Build the Node feature tools layer (scratch + /pnpm + /bun).
+docker-build-tools-node:
+	docker build -f Dockerfile.tools-node -t codegen-sandbox-tools-node:dev .
 
 # Build the Go convenience image — requires docker-build-tools first (the
 # main Dockerfile COPYs from codegen-sandbox-tools:dev).
