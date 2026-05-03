@@ -61,36 +61,81 @@ See [Post-edit lint feedback](/concepts/post-edit-lint-feedback/).
 
 ## Process model
 
-```
-┌─────────────────────────────────┐
-│ cmd/sandbox                     │
-│   main.go  — flag parse + SIGINT/SIGTERM → cancel ctx
-│   run.go   — http.Server wiring + graceful shutdown
-└─────────────────────────────────┘
-              │
-              ▼
-┌─────────────────────────────────┐
-│ internal/server                 │
-│   server.go     — MCP server, tool registration
-│   middleware.go — scrubbingRegistrar wraps handlers with scrub.Scrub
-└─────────────────────────────────┘
-              │
-              ▼
-┌─────────────────────────────────────────────────────────┐
-│ internal/tools                                          │
-│   read / write / edit / glob / grep / bash / run_*      │
-│   bash_output / kill_shell                              │
-│   shell_registry  — background shells                   │
-│   exec.go         — shared runVerifyCmd with pgroup kill│
-└─────────────────────────────────────────────────────────┘
-              │
-              ▼
-┌─────────────────────────────────┐
-│ internal/{workspace,verify,scrub}  — primitives         │
-└─────────────────────────────────┘
+```mermaid
+flowchart TB
+    cmd["<b>cmd/sandbox</b><br/><i>main.go</i> — flag parse + SIGINT/SIGTERM<br/><i>run.go</i> — http.Server wiring + graceful shutdown"]
+
+    subgraph listeners["HTTP listeners"]
+      direction LR
+      mcp["<b>internal/server</b><br/>MCP wire — agent-facing<br/>scrubbing + tracing middleware<br/>tool registration"]
+      api["<b>internal/api</b><br/>human wire — OIDC-gated<br/>tree, file, events, download,<br/>exec, port-forward, ssh, docs"]
+    end
+
+    tools["<b>internal/tools</b> — 32 MCP tools<br/>filesystem · shell · verification · code-intelligence<br/>· snapshots · diagnostics · render · secrets"]
+
+    subgraph prims["Primitives — internal/*"]
+      direction LR
+      P1[workspace]
+      P2[verify]
+      P3[scrub]
+      P4[secrets]
+      P5[search]
+      P6[lsp]
+      P7[ast]
+      P8[tracing]
+      P9[metrics]
+    end
+
+    cmd --> listeners
+    mcp --> tools
+    tools --> prims
+    api --> prims
 ```
 
-Each package has one clear responsibility. The separation makes it easy to add a tool (drop in an `internal/tools/foo.go` + `RegisterFoo`) or a language detector (implement the `verify.Detector` interface).
+Each package has one clear responsibility. The separation makes it easy to add a tool (drop in an `internal/tools/foo.go` + `RegisterFoo`), a language detector (implement the `verify.Detector` interface), or a new human-wire endpoint (mount it on `internal/api/server.go`).
+
+## Code intelligence
+
+Two of the tool categories — LSP-backed and AST-backed — sit on top of dedicated primitives that bring language-aware capabilities into the sandbox without bypassing path containment.
+
+```mermaid
+flowchart LR
+    subgraph LSPtools["<b>LSP-backed tools</b>"]
+      direction TB
+      L1[find_definition]
+      L2[find_references]
+      L3[rename_symbol]
+    end
+
+    subgraph ASTtools["<b>AST-backed tools</b>"]
+      direction TB
+      A1[change_function_signature]
+      A2[edit_function_body]
+      A3[insert_after_method]
+    end
+
+    LSPtools --> lspP["<b>internal/lsp</b><br/>spawns + proxies a language server<br/>per (workspace, language); idle-reaped"]
+    ASTtools --> astP["<b>internal/ast</b><br/>structural rewrites that preserve<br/>comments + formatting"]
+    lspP --> WS["workspace.Resolve<br/>path containment"]
+    astP --> WS
+```
+
+**LSP-backed tools** answer queries that need real type/scope resolution — cross-file definitions, all-references searches, rename-with-conflict-detection. The sandbox spawns the language server lazily per `(workspace, language)` pair, talks LSP over stdio, and surfaces structured results. Production wiring is Go-first today (`gopls`); Python / Node / Rust language-server bindings are tracked as follow-ups. See [LSP navigation](/tools/lsp-navigation/) for the full table.
+
+**AST-backed tools** perform structural edits — replacing a function body, changing a signature with cascading callsite updates, inserting a method after a named one — without breaking comments or formatting. Plain-text `Edit` can't do this safely; the AST tools can. See [AST edits](/tools/ast-edits/).
+
+Both layers route through the same `workspace.Resolve` that every filesystem-touching tool uses. Language servers and AST writers don't get a side door around the trust boundary.
+
+## Tool naming and Claude Code compatibility
+
+The 32 tools use **two naming conventions in parallel**, and the split is intentional:
+
+| Convention | Tools | Why |
+|---|---|---|
+| **PascalCase** | `Read`, `Write`, `Edit`, `Glob`, `Grep`, `Bash`, `BashOutput`, `KillShell` | Mirror [Claude Code's built-in tool names](https://docs.claude.com/en/docs/claude-code/) verbatim. Argument shapes match too — e.g. `Edit` takes `file_path` / `old_string` / `new_string` / `replace_all`, `Read` takes `file_path` / `offset` / `limit` — so a Claude-Code-trained tool wrapper works against this sandbox without rewiring. |
+| **snake_case** | `run_tests`, `run_lint`, `run_typecheck`, `find_definition`, `change_function_signature`, `render_mermaid`, `snapshot_create`, `secrets_available`, … | Project-native, MCP-idiomatic. Cover capabilities Claude Code doesn't ship: verification, LSP nav, AST edits, secrets, snapshots, render. |
+
+PromptKit's codegen agent reuses Claude-Code-trained patterns for the file/shell core; everything else is sandbox-specific. If the day comes that we need to rename PascalCase tools to fit a downstream convention, both names can be served simultaneously through MCP for one release before the old form is retired.
 
 ## Sandbox lifecycle
 
