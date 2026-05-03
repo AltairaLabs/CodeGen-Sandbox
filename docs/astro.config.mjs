@@ -11,6 +11,10 @@ export default defineConfig({
       title: 'Codegen Sandbox',
       description:
         'A Docker-based MCP server that ships safe codegen tools (Read, Edit, Write, Glob, Grep, Bash, run_tests, run_lint, run_typecheck) for PromptKit agents. Hook up vendor MCP servers alongside for web search / fetch.',
+      logo: {
+        src: './public/logo.svg',
+        alt: 'Codegen Sandbox',
+      },
       plugins: [starlightThemeGalaxy()],
       customCss: ['./src/styles/custom.css'],
       social: [
