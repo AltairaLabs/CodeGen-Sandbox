@@ -1,7 +1,34 @@
-/* Custom styling for codegen-sandbox docs. Most presentation comes from
-   starlight-theme-galaxy; overrides live here. */
+/* Codegen Sandbox custom theme
+ * Pins Galaxy's accent to the brand blue/cyan that the logo and the
+ * Mermaid diagrams use, mirroring the override pattern PromptKit uses to
+ * pin Galaxy's accent to its brand purple.
+ *
+ * Logo gradient: #3b82f6 (blue-500) → #06b6d4 (cyan-500) → #0891b2 (cyan-600)
+ */
 
 :root {
   --sl-font-system-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo,
     Consolas, "Liberation Mono", monospace;
+}
+
+/* Dark mode (Galaxy default) — accents lifted toward sky/cyan-400 so they
+   stay readable on the dark cosmic background. */
+:root,
+::backdrop {
+  --sl-color-accent: hsl(199, 89%, 60%);       /* sky-400-ish #38bdf8 */
+  --sl-color-accent-low: hsl(199, 89%, 30%);
+  --sl-color-accent-high: #a5f3fc;             /* cyan-200 */
+
+  --fb-steps-bg-color: var(--sl-color-accent-high);
+  --fb-toc-color-current-bg: rgba(56, 189, 248, 0.2);
+}
+
+/* Light mode — slightly darker for contrast on light backgrounds. */
+:root[data-theme='light'] {
+  --sl-color-accent: hsl(199, 89%, 48%);       /* sky-500 #0ea5e9 */
+  --sl-color-accent-low: hsl(199, 89%, 90%);
+  --sl-color-accent-high: hsl(199, 89%, 35%);
+
+  --fb-steps-bg-color: hsl(199, 89%, 48%);
+  --fb-toc-color-current-bg: rgba(14, 165, 233, 0.15);
 }
