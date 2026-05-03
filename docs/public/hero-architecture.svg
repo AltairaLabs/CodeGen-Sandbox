@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 400" fill="none" role="img" aria-label="A PromptKit agent at left dispatches MCP tool calls to three isolated sandbox containers on the right; shields on each sandbox indicate the trust boundary.">
+  <defs>
+    <linearGradient id="hero-brain-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#3b82f6"/>
+      <stop offset="100%" stop-color="#06b6d4"/>
+    </linearGradient>
+    <linearGradient id="hero-sandbox-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#06b6d4"/>
+      <stop offset="100%" stop-color="#0891b2"/>
+    </linearGradient>
+    <radialGradient id="hero-glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#3b82f6" stop-opacity="0.55"/>
+      <stop offset="100%" stop-color="#3b82f6" stop-opacity="0"/>
+    </radialGradient>
+    <symbol id="hero-shield" viewBox="0 0 24 24">
+      <path d="M12 2 L4 5 V12 C4 17 8 21 12 22 C16 21 20 17 20 12 V5 Z" fill="rgba(6,182,212,0.15)" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+      <path d="M9 12 L11 14 L15 10" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+    </symbol>
+  </defs>
+
+  <path id="hero-line-1" d="M 250 200 Q 410 130 560 90" stroke="url(#hero-brain-grad)" stroke-width="2" stroke-dasharray="4 4" stroke-linecap="round" opacity="0.45"/>
+  <path id="hero-line-2" d="M 250 200 L 560 220" stroke="url(#hero-brain-grad)" stroke-width="2" stroke-dasharray="4 4" stroke-linecap="round" opacity="0.45"/>
+  <path id="hero-line-3" d="M 250 200 Q 410 290 560 350" stroke="url(#hero-brain-grad)" stroke-width="2" stroke-dasharray="4 4" stroke-linecap="round" opacity="0.45"/>
+
+  <text x="405" y="195" text-anchor="middle" font-family="ui-monospace, 'SF Mono', Menlo, monospace" font-size="11" fill="#06b6d4" opacity="0.65">MCP</text>
+
+  <circle r="5" fill="#60a5fa">
+    <animateMotion dur="2.4s" repeatCount="indefinite"><mpath href="#hero-line-1"/></animateMotion>
+    <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.12;0.88;1" dur="2.4s" repeatCount="indefinite"/>
+  </circle>
+  <circle r="5" fill="#60a5fa">
+    <animateMotion dur="2.4s" begin="0.8s" repeatCount="indefinite"><mpath href="#hero-line-2"/></animateMotion>
+    <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.12;0.88;1" dur="2.4s" begin="0.8s" repeatCount="indefinite"/>
+  </circle>
+  <circle r="5" fill="#60a5fa">
+    <animateMotion dur="2.4s" begin="1.6s" repeatCount="indefinite"><mpath href="#hero-line-3"/></animateMotion>
+    <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.12;0.88;1" dur="2.4s" begin="1.6s" repeatCount="indefinite"/>
+  </circle>
+
+  <g transform="translate(180, 200)">
+    <circle r="80" fill="url(#hero-glow)">
+      <animate attributeName="r" values="80;104;80" dur="3s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0.7;0.35;0.7" dur="3s" repeatCount="indefinite"/>
+    </circle>
+    <circle r="62" fill="url(#hero-brain-grad)" stroke="white" stroke-width="2" stroke-opacity="0.25"/>
+    <text text-anchor="middle" y="-2" font-family="system-ui, -apple-system, sans-serif" font-size="17" font-weight="700" fill="white">PromptKit</text>
+    <text text-anchor="middle" y="18" font-family="system-ui, -apple-system, sans-serif" font-size="11" font-weight="500" fill="white" opacity="0.85">brain</text>
+  </g>
+
+  <g transform="translate(560, 40)">
+    <rect width="200" height="100" rx="14" stroke="url(#hero-sandbox-grad)" stroke-width="3" fill="rgba(6,182,212,0.05)"/>
+    <use href="#hero-shield" x="14" y="14" width="22" height="22" color="#06b6d4">
+      <animate attributeName="opacity" values="0.75;1;0.75" dur="3s" repeatCount="indefinite"/>
+    </use>
+    <text x="100" y="32" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="600" fill="currentColor">Sandbox</text>
+    <rect x="42" y="50" width="116" height="6" rx="2" fill="url(#hero-sandbox-grad)" opacity="0.7"/>
+    <rect x="42" y="64" width="98" height="6" rx="2" fill="url(#hero-sandbox-grad)" opacity="0.5"/>
+    <rect x="42" y="78" width="108" height="6" rx="2" fill="url(#hero-sandbox-grad)" opacity="0.35"/>
+  </g>
+
+  <g transform="translate(560, 170)">
+    <rect width="200" height="100" rx="14" stroke="url(#hero-sandbox-grad)" stroke-width="3" fill="rgba(6,182,212,0.05)"/>
+    <use href="#hero-shield" x="14" y="14" width="22" height="22" color="#06b6d4">
+      <animate attributeName="opacity" values="0.75;1;0.75" dur="3s" begin="1s" repeatCount="indefinite"/>
+    </use>
+    <text x="100" y="32" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="600" fill="currentColor">Sandbox</text>
+    <rect x="42" y="50" width="100" height="6" rx="2" fill="url(#hero-sandbox-grad)" opacity="0.7"/>
+    <rect x="42" y="64" width="118" height="6" rx="2" fill="url(#hero-sandbox-grad)" opacity="0.5"/>
+    <rect x="42" y="78" width="92" height="6" rx="2" fill="url(#hero-sandbox-grad)" opacity="0.35"/>
+  </g>
+
+  <g transform="translate(560, 300)">
+    <rect width="200" height="100" rx="14" stroke="url(#hero-sandbox-grad)" stroke-width="3" fill="rgba(6,182,212,0.05)"/>
+    <use href="#hero-shield" x="14" y="14" width="22" height="22" color="#06b6d4">
+      <animate attributeName="opacity" values="0.75;1;0.75" dur="3s" begin="2s" repeatCount="indefinite"/>
+    </use>
+    <text x="100" y="32" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="600" fill="currentColor">Sandbox</text>
+    <rect x="42" y="50" width="110" height="6" rx="2" fill="url(#hero-sandbox-grad)" opacity="0.7"/>
+    <rect x="42" y="64" width="80" height="6" rx="2" fill="url(#hero-sandbox-grad)" opacity="0.5"/>
+    <rect x="42" y="78" width="120" height="6" rx="2" fill="url(#hero-sandbox-grad)" opacity="0.35"/>
+  </g>
+</svg>
