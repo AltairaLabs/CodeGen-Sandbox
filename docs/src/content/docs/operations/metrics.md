@@ -14,9 +14,31 @@ codegen-sandbox \
   -workspace=/workspace
 ```
 
-`-metrics-addr` is empty by default, which disables the listener entirely. A non-empty value starts a third `net/http` server exposing only `/metrics` (the MCP server runs on `-addr`; the optional human-facing API runs on `-api-addr`).
+`-metrics-addr` is empty by default, which disables the listener entirely. A non-empty value starts a third `net/http` server exposing `/metrics` plus the k8s-style probes below (the MCP server runs on `-addr`; the optional human-facing API runs on `-api-addr`).
 
 There is **no authentication on the listener** — this is a deliberate design choice. Bolting on identity middleware couples scraper deployment to the sandbox's JWT-forwarding path. Instead, restrict scraper access at the network layer (Kubernetes `NetworkPolicy`, security group, mesh policy).
+
+## Liveness + readiness probes
+
+The same listener serves k8s-idiomatic probe endpoints — they share a port because they share a threat model (unauthenticated, scraped by orchestration tooling).
+
+| Endpoint | Purpose | 200 means | 503 means |
+|---|---|---|---|
+| `GET /healthz` | Liveness | the process answers HTTP — that's it | n/a (would mean the process is wedged; kubelet kills the pod) |
+| `GET /readyz` | Readiness | every workspace root in the set `stat`s as a directory | one of the workspace roots is missing or isn't a directory; response body names the failing workspace |
+
+Readiness deliberately does not probe downstream concerns (LSP servers, package managers, network egress). The check should reflect *this pod*, not the world — readiness flapping on a transient gopls hiccup would do more harm than good.
+
+Example k8s probe config:
+
+```yaml
+livenessProbe:
+  httpGet: { path: /healthz, port: 9090 }
+  periodSeconds: 10
+readinessProbe:
+  httpGet: { path: /readyz, port: 9090 }
+  periodSeconds: 5
+```
 
 ## Example Prometheus scrape config
 

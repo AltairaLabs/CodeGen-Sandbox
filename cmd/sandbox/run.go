@@ -14,6 +14,7 @@ import (
 	"github.com/altairalabs/codegen-sandbox/internal/api"
 	"github.com/altairalabs/codegen-sandbox/internal/metrics"
 	"github.com/altairalabs/codegen-sandbox/internal/metrics/health"
+	"github.com/altairalabs/codegen-sandbox/internal/probes"
 	"github.com/altairalabs/codegen-sandbox/internal/server"
 	"github.com/altairalabs/codegen-sandbox/internal/tracing"
 	"github.com/altairalabs/codegen-sandbox/internal/workspace"
@@ -232,7 +233,7 @@ func buildListeners(ws *workspace.Workspace, set *workspace.Set, cfg Config, m *
 		log.Printf("codegen-sandbox api listening on %s", cfg.APIAddr)
 	}
 
-	metricsSrv := buildMetricsServer(cfg.MetricsAddr, m)
+	metricsSrv := buildMetricsServer(cfg.MetricsAddr, m, set)
 	if metricsSrv != nil {
 		log.Printf("codegen-sandbox metrics listening on %s", cfg.MetricsAddr)
 	}
@@ -313,14 +314,19 @@ func buildAPIServer(ws *workspace.Workspace, cfg Config, m *metrics.Metrics) (*h
 	}, closer, nil
 }
 
-// buildMetricsServer returns a minimal /metrics listener, or nil if
-// MetricsAddr is empty or the Metrics surface wasn't constructed.
-func buildMetricsServer(addr string, m *metrics.Metrics) *http.Server {
+// buildMetricsServer returns the operator-facing listener, or nil if
+// MetricsAddr is empty or the Metrics surface wasn't constructed. The
+// listener serves Prometheus /metrics plus k8s-style /healthz (liveness)
+// and /readyz (readiness). All three share the port because they share
+// the threat model: unauthenticated, scraped by orchestration tooling.
+func buildMetricsServer(addr string, m *metrics.Metrics, set *workspace.Set) *http.Server {
 	if addr == "" || m == nil {
 		return nil
 	}
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", m.Handler())
+	mux.Handle("/healthz", probes.LivenessHandler())
+	mux.Handle("/readyz", probes.ReadinessHandler(set))
 	return &http.Server{
 		Addr:              addr,
 		Handler:           mux,
