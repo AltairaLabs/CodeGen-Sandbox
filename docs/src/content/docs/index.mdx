@@ -35,11 +35,11 @@ The codegen sandbox is the **hands** of a PromptKit codegen agent. The agent (th
   <Card title="Verification" icon="approve-check">
     **run_tests**, **run_lint**, **run_typecheck** use project-type detection (Go today; more languages behind the Detector interface) to run the right command.
   </Card>
-  <Card title="Web" icon="rss">
-    **WebFetch** with an SSRF-defensive URL filter (private ranges, cloud metadata endpoints, non-http schemes all blocked). **WebSearch** backend-pluggable.
+  <Card title="Vendor MCP for the web" icon="rss">
+    The sandbox deliberately doesn't ship WebFetch/WebSearch — wire vendor MCP servers (Brave, Exa, Tavily, official `fetch`) alongside it instead. See [non-sandbox tools](/concepts/non-sandbox-tools/).
   </Card>
   <Card title="Safe by default" icon="shield">
-    Path containment, command denylist, secret scrubbing, URL filter — layered defence-in-depth. The Docker container is the real trust boundary.
+    Path containment, command denylist, secret scrubbing — layered defence-in-depth. The Docker container is the real trust boundary.
   </Card>
 </CardGrid>
 
@@ -47,18 +47,41 @@ The codegen sandbox is the **hands** of a PromptKit codegen agent. The agent (th
 
 The codegen sandbox is one **provider** behind PromptKit's agent — the piece that actually runs tool calls. PromptKit asks for "a sandbox"; the provider returns an MCP endpoint. The agent then calls tools over MCP; the sandbox executes them inside a container.
 
+```mermaid
+flowchart LR
+    A["PromptKit agent<br/><i>(brain)</i><br/>runs model<br/>holds context<br/>no exec privs"]
+    A -- "MCP (HTTP+SSE)" --> B["Sandbox container<br/><i>(hands)</i>"]
+    B --> T1["Read / Edit / Write"]
+    B --> T2["Glob / Grep / search_code"]
+    B --> T3["Bash (fg + bg)"]
+    B --> T4["run_tests / run_lint /<br/>run_typecheck"]
+    B --> T5["LSP / AST edits /<br/>render diagrams"]
+    B --> V[(workspace volume)]
 ```
-┌──────────────────┐         ┌────────────────────────────────────┐
-│  PromptKit agent │  MCP    │  Sandbox container (docker)        │
-│  (brain)         │ ──────► │  (hands)                           │
-│                  │         │                                    │
-│  runs model      │         │  - Read / Edit / Write             │
-│  holds context   │         │  - Glob / Grep                     │
-│  TodoWrite       │         │  - Bash (fg + bg)                  │
-│                  │         │  - run_tests / run_lint / ...      │
-│  no exec privs   │         │  - WebFetch / WebSearch            │
-│                  │         │  - workspace volume mounted        │
-└──────────────────┘         └────────────────────────────────────┘
+
+## Defence in depth
+
+```mermaid
+flowchart TB
+    subgraph Agent["PromptKit agent"]
+      direction LR
+      M[Model] --- C[Context]
+    end
+    subgraph Wire["MCP wire"]
+      direction LR
+      MW[scrubbing middleware]
+    end
+    subgraph Sandbox["Sandbox container"]
+      direction TB
+      W[workspace.Resolve<br/>path containment]
+      D[Bash denylist]
+      S[secrets interface<br/>+ scrub registry]
+      W --- D --- S
+    end
+    Agent -- tool call --> Wire
+    Wire -- structured args --> Sandbox
+    Sandbox -- structured output --> Wire
+    Wire -- scrubbed text --> Agent
 ```
 
 [Next: Getting Started →](/getting-started/)
