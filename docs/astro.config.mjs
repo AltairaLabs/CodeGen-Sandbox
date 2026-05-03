@@ -15,6 +15,9 @@ export default defineConfig({
         src: './public/logo.svg',
         alt: 'Codegen Sandbox',
       },
+      components: {
+        PageFrame: './src/components/SitePageFrame.astro',
+      },
       plugins: [starlightThemeGalaxy()],
       customCss: ['./src/styles/custom.css'],
       social: [
