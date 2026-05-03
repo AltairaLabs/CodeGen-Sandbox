@@ -55,6 +55,15 @@ export default defineConfig({
           autogenerate: { directory: 'operations' },
         },
       ],
+      head: [
+        {
+          tag: 'script',
+          attrs: {
+            type: 'module',
+            src: '/mermaid-init.js',
+          },
+        },
+      ],
     }),
   ],
 });
