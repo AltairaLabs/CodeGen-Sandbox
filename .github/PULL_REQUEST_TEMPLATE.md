@@ -1,48 +1,26 @@
-<!--
-Thanks for the PR! Fill out the sections below. Delete anything that
-doesn't apply. For tiny refinements (typo, lint fix) a one-line summary
-is fine — the sections are optional.
--->
-
 ## Summary
 
-<!-- 1–3 bullets: WHAT this PR does and WHY. -->
+**Type of change**
+- [ ] Bug fix
+- [ ] New feature
+- [ ] Breaking change
+- [ ] Documentation
+- [ ] CI / infrastructure
+- [ ] Refactor / tests
 
-## Changes
+**What & why**
+What does this PR do, and why? Link any related issues.
 
-<!--
-Group by area if useful:
-  - `internal/api/`  — …
-  - `docs/`          — …
-  - `internal/tools/` — …
-Or just a short bulleted list.
--->
+Fixes #(issue)
 
-## Test plan
+## Testing
+- [ ] Tests pass locally
+- [ ] Lint / format checks pass locally
+- [ ] Added or updated tests covering the change
 
-- [ ] `go test ./... -race -count=1 -timeout=180s`
-- [ ] `make lint`
-- [ ] `cd docs && npm run build` (if docs changed)
-- [ ] Manual smoke if applicable — paste commands + output below:
-
-<details>
-<summary>Smoke output</summary>
-
-```
-(paste)
-```
-
-</details>
-
-## Notes / follow-ups
-
-<!--
-- Security considerations (new outbound calls, new env-var reads,
-  credential paths touched, etc.)
-- Migration / back-compat implications
-- Things explicitly deferred to a follow-up PR
--->
-
-## Related
-
-<!-- Closes #123, related to #456, supersedes #789 -->
+## Checklist
+- [ ] My commits are signed off (`git commit -s`) — the DCO check is enforced
+- [ ] I have signed the CLA (the CLA Assistant bot prompts on your first PR)
+- [ ] I have read the [Contributing Guidelines](./CONTRIBUTING.md) and [Code of Conduct](./CODE_OF_CONDUCT.md)
+- [ ] Documentation updated if behavior changed
+- [ ] PR title follows Conventional Commits
