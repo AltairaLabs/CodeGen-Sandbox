@@ -417,7 +417,18 @@ jobs:
       # tsserver. All four binaries land in /usr/local/bin via npm's
       # global prefix on the ubuntu-latest runner image.
       - name: Install eslint + pyright + typescript-language-server
-        run: npm i -g eslint pyright typescript-language-server typescript
+        # typescript is PINNED to ^5 deliberately. TypeScript 7 is the native
+        # rewrite and no longer ships lib/tsserver.js — its lib/ contains
+        # getExePath.js and a native binary instead. typescript-language-server
+        # 5.x resolves tsserver from typescript/lib/tsserver.js, so an
+        # unpinned install silently started failing the day TS 7 released:
+        #
+        #   Could not find a valid TypeScript installation. Please ensure that
+        #   the "typescript" dependency is installed in the workspace ...
+        #
+        # Nothing in this repo changed. Unpin only when
+        # typescript-language-server supports the TS 7 layout.
+        run: npm i -g eslint pyright typescript-language-server 'typescript@^5'
 
       - name: Verify integration toolchain
         run: |

@@ -13,6 +13,7 @@ package lsp
 import (
 	"context"
 	"os/exec"
+	"strings"
 	"testing"
 	"time"
 
@@ -20,11 +21,21 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// requireRustAnalyzer skips the test when rust-analyzer isn't on PATH.
+// requireRustAnalyzer skips the test when rust-analyzer isn't usable.
+//
+// LookPath alone is not enough: rustup installs a SHIM at
+// ~/.cargo/bin/rust-analyzer that exists on PATH even when the component is
+// not installed, and only fails when executed. That made the test fail with an
+// opaque `lsp: initialize: read header: EOF` on a machine that simply did not
+// have the component, instead of skipping. Actually run it.
 func requireRustAnalyzer(t *testing.T) {
 	t.Helper()
 	if _, err := exec.LookPath("rust-analyzer"); err != nil {
 		t.Skip("rust-analyzer not on PATH; skipping real-LSP integration test")
+	}
+	if out, err := exec.Command("rust-analyzer", "--version").CombinedOutput(); err != nil {
+		t.Skipf("rust-analyzer on PATH but not runnable (%v: %s); "+
+			"install it with `rustup component add rust-analyzer`", err, strings.TrimSpace(string(out)))
 	}
 }
 
@@ -118,7 +129,23 @@ func TestRealRustAnalyzer_DefinitionReferencesRename(t *testing.T) {
 	})
 
 	t.Run("References", func(t *testing.T) {
-		locs, err := c.References(ctx, file, line, col)
+		// Same race the Definition subtest already polls for. rust-analyzer
+		// answers requests issued while it is still settling with the LSP
+		// ContentModified error ("content modified"), which the spec defines
+		// as retryable rather than fatal. Definition polling does not fully
+		// drain that window: it returns as soon as ONE query succeeds, and
+		// analysis can still be in flux for the next one. On CI this failed as
+		//   lsp: textDocument/references: content modified
+		var locs []Location
+		var err error
+		deadline := time.Now().Add(90 * time.Second)
+		for time.Now().Before(deadline) {
+			locs, err = c.References(ctx, file, line, col)
+			if err == nil && len(locs) > 0 {
+				break
+			}
+			time.Sleep(500 * time.Millisecond)
+		}
 		require.NoError(t, err)
 		// References includes the declaration plus the use inside the
 		// `tests` module. We assert on a use-site reference at a line
@@ -135,7 +162,17 @@ func TestRealRustAnalyzer_DefinitionReferencesRename(t *testing.T) {
 	})
 
 	t.Run("Rename", func(t *testing.T) {
-		edit, err := c.Rename(ctx, file, line, col, "sum")
+		// Retried for the same ContentModified reason as References above.
+		var edit WorkspaceEdit
+		var err error
+		deadline := time.Now().Add(90 * time.Second)
+		for time.Now().Before(deadline) {
+			edit, err = c.Rename(ctx, file, line, col, "sum")
+			if err == nil && len(edit.Changes) > 0 {
+				break
+			}
+			time.Sleep(500 * time.Millisecond)
+		}
 		require.NoError(t, err)
 		require.NotEmpty(t, edit.Changes, "rename returned empty WorkspaceEdit")
 		// Both the declaration and the in-test use are in src/lib.rs so
