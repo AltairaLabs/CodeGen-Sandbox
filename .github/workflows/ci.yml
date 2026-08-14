@@ -127,6 +127,15 @@ jobs:
 
       - name: Install deps
         run: npm install --no-audit --no-fund
+        env:
+          # @altairalabs/brand (the masterbrand family bar) is a private
+          # GitHub Packages dependency; docs/.npmrc reads this. secrets.GITHUB_TOKEN
+          # cannot be used — it is scoped to this repo and cannot read another
+          # repository's packages. Needs `read:packages`.
+          #
+          # NOTE: docs.yml has its own install step and needs this too. Both
+          # build the docs; this one runs on pull requests, that one on push.
+          NODE_AUTH_TOKEN: ${{ secrets.NODE_AUTH_TOKEN }}
 
       - name: Build
         run: npm run build
