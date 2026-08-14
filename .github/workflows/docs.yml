@@ -17,10 +17,12 @@ name: Docs site
 # which Astro copies into the build output so Pages picks it up automatically.
 
 on:
+  # NO path filter on pull_request, deliberately. "Build Astro site" is a
+  # REQUIRED status check in the main-protection ruleset, and a required check
+  # that is path-filtered never reports on PRs which do not touch that path —
+  # blocking them forever on a check that will never run. The push trigger below
+  # keeps its filter because deploys should only happen for docs changes.
   pull_request:
-    paths:
-      - 'docs/**'
-      - '.github/workflows/docs.yml'
   push:
     branches: [main]
     paths:
