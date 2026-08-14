@@ -112,33 +112,11 @@ jobs:
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
-  docs:
-    name: Docs build
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: docs
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-
-      - name: Install deps
-        run: npm install --no-audit --no-fund
-        env:
-          # @altairalabs/brand (the masterbrand family bar) is a private
-          # GitHub Packages dependency; docs/.npmrc reads this. secrets.GITHUB_TOKEN
-          # cannot be used — it is scoped to this repo and cannot read another
-          # repository's packages. Needs `read:packages`.
-          #
-          # NOTE: docs.yml has its own install step and needs this too. Both
-          # build the docs; this one runs on pull requests, that one on push.
-          NODE_AUTH_TOKEN: ${{ secrets.NODE_AUTH_TOKEN }}
-
-      - name: Build
-        run: npm run build
+  # The docs build lives in docs.yml, which now runs on pull requests as well
+  # as pushes (deploy steps are gated to non-PR). It used to be duplicated
+  # here, which meant maintaining the same build twice — and when the docs
+  # gained a private dependency only one copy got the auth token, so PRs
+  # failed with a 401 while main was fine. Do not add a docs job back here.
 
   docker-tools:
     name: Dockerfile.tools build + artifact smoke
