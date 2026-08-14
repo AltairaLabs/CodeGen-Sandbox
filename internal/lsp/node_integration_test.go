@@ -68,6 +68,9 @@ func seedNodeWorkspace(t *testing.T) string {
 
 export const result = add(1, 2);
 `)
+	// tsserver must be resolvable from the workspace itself — see
+	// linkGlobalTypeScript for why a global install is no longer enough.
+	linkGlobalTypeScript(t, root)
 	return root
 }
 
