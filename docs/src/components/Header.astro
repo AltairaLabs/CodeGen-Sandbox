@@ -1,0 +1,27 @@
+---
+/**
+ * Custom Header — wraps Starlight's default header to add the AltairaLabs
+ * masterbrand family bar as a strip across the top of the fixed header, so
+ * every doc page carries the same family chrome as its sibling product sites.
+ *
+ * The bar itself comes from @altairalabs/brand; the product list, URLs and
+ * licensing live in that package's registry. Do not hardcode products here.
+ *
+ * Requires the --fam-h rules in src/styles/custom.css, which reserve the
+ * strip's height inside Starlight's fixed header.
+ */
+import type { Props } from '@astrojs/starlight/props';
+import DefaultHeader from '@astrojs/starlight/components/Header.astro';
+import FamilyBar from '@altairalabs/brand/FamilyBar.astro';
+---
+
+<div class="header-wrapper">
+  <FamilyBar current="codegen" docsHref="/getting-started/" docs />
+  <DefaultHeader {...Astro.props}><slot /></DefaultHeader>
+</div>
+
+<style>
+  .header-wrapper {
+    display: contents;
+  }
+</style>
