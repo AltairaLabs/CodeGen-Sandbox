@@ -23,7 +23,7 @@ export default defineConfig({
         Header: './src/components/Header.astro',
       },
       plugins: [starlightThemeGalaxy()],
-      customCss: ['./src/styles/custom.css'],
+      customCss: ['@altairalabs/brand/family-bar-starlight.css', './src/styles/custom.css'],
       social: [
         {
           icon: 'github',
