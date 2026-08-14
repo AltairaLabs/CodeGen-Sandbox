@@ -17,6 +17,10 @@ export default defineConfig({
       },
       components: {
         PageFrame: './src/components/SitePageFrame.astro',
+        // Adds the AltairaLabs masterbrand family bar as a strip across the
+        // top of the fixed header. Paired with the --fam-h rules in
+        // src/styles/custom.css, which reserve its height.
+        Header: './src/components/Header.astro',
       },
       plugins: [starlightThemeGalaxy()],
       customCss: ['./src/styles/custom.css'],

@@ -13,25 +13,24 @@ import (
 )
 
 // linkGlobalTypeScript makes the globally-installed `typescript` package
-// resolvable from the seeded temp workspace.
+// resolvable from the seeded temp workspace, and fails loudly and specifically
+// when that install cannot serve tsserver.
 //
-// typescript-language-server resolves tsserver from the workspace's own
-// node_modules, or from an explicit `tsserver.path` init option. Older
-// releases ALSO fell back to a globally-installed typescript, and that
-// fallback is what seedNodeWorkspace was relying on — it writes a
-// tsconfig.json and two .ts files but never a node_modules.
-//
-// Current releases dropped that fallback, so the server starts, then fails
-// initialize with:
+// The failure this guards against is not obvious. typescript-language-server
+// 5.x resolves tsserver from `typescript/lib/tsserver.js`. TypeScript 7 is the
+// native rewrite and does NOT ship that file — its lib/ contains
+// getExePath.js and a native binary instead. So an unpinned
+// `npm i -g typescript` silently started installing a TypeScript that the
+// language server cannot use, and every run failed with:
 //
 //	Could not find a valid TypeScript installation. Please ensure that the
 //	"typescript" dependency is installed in the workspace or that a valid
 //	`tsserver.path` is specified.
 //
-// CI installs typescript-language-server unpinned (`npm i -g …`), so this
-// broke with no change to this repo. Symlinking the global package into the
-// workspace makes the fixture self-sufficient and independent of whichever
-// language-server version the runner resolves.
+// That message points at the workspace, which is misleading — the workspace
+// was fine; the TypeScript version was wrong. CI pins typescript@^5 for this
+// reason. The explicit tsserver.js check below turns a confusing runtime
+// failure into a skip that names the actual cause.
 func linkGlobalTypeScript(t *testing.T, root string) {
 	t.Helper()
 
@@ -42,7 +41,16 @@ func linkGlobalTypeScript(t *testing.T, root string) {
 
 	globalTS := filepath.Join(strings.TrimSpace(string(out)), "typescript")
 	if _, err := os.Stat(globalTS); err != nil {
-		t.Skip("global `typescript` package not installed (npm i -g typescript); skipping real-LSP integration test")
+		t.Skip("global `typescript` package not installed (npm i -g 'typescript@^5'); skipping real-LSP integration test")
+	}
+
+	// The version check that matters: tsserver.js, not the version string.
+	if _, err := os.Stat(filepath.Join(globalTS, "lib", "tsserver.js")); err != nil {
+		t.Skipf(
+			"global typescript has no lib/tsserver.js at %s — typescript-language-server "+
+				"cannot use it. TypeScript 7 dropped tsserver.js; install typescript@^5.",
+			globalTS,
+		)
 	}
 
 	nodeModules := filepath.Join(root, "node_modules")

@@ -1,13 +1,28 @@
 name: Docs site
 
 # Builds the Astro/Starlight docs site under docs/ and deploys it to
-# GitHub Pages. Pushes to main rebuild and redeploy; manual dispatch is
-# available for forcing a redeploy without a content change.
+# GitHub Pages.
+#
+# - pull_request touching docs/: build only, no deploy (validation).
+# - push to main touching docs/: build and deploy.
+# - workflow_dispatch: force a redeploy without a content change.
+#
+# This is the ONLY workflow that builds the docs. ci.yml previously carried a
+# duplicate "Docs build" job for pull requests, which meant the same build was
+# maintained in two places — and when the docs gained a private dependency,
+# only one of the two got the auth token, so PRs failed with a 401 while main
+# was fine. Do not reintroduce a second docs build; add to this one.
 #
 # Custom domain (codegen-sandbox.altairalabs.ai) is wired via docs/public/CNAME,
 # which Astro copies into the build output so Pages picks it up automatically.
 
 on:
+  # NO path filter on pull_request, deliberately. "Build Astro site" is a
+  # REQUIRED status check in the main-protection ruleset, and a required check
+  # that is path-filtered never reports on PRs which do not touch that path —
+  # blocking them forever on a check that will never run. The push trigger below
+  # keeps its filter because deploys should only happen for docs changes.
+  pull_request:
   push:
     branches: [main]
     paths:
@@ -45,20 +60,31 @@ jobs:
       - name: Install
         run: npm ci
         working-directory: docs
+        env:
+          # @altairalabs/brand (the masterbrand family bar) is a private
+          # GitHub Packages dependency; docs/.npmrc reads this. secrets.GITHUB_TOKEN
+          # cannot be used — it is scoped to this repo and cannot read another
+          # repository's packages. Needs `read:packages`.
+          NODE_AUTH_TOKEN: ${{ secrets.NODE_AUTH_TOKEN }}
 
       - name: Build
         run: npm run build
         working-directory: docs
 
+      # Pages steps are skipped on pull requests: a PR validates that the site
+      # still builds, it must not publish.
       - uses: actions/configure-pages@v5
+        if: github.event_name != 'pull_request'
 
       - uses: actions/upload-pages-artifact@v3
+        if: github.event_name != 'pull_request'
         with:
           path: docs/dist
 
   deploy:
     name: Deploy to GitHub Pages
     needs: build
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     environment:
       name: github-pages

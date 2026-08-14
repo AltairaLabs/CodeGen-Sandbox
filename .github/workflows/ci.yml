@@ -112,24 +112,11 @@ jobs:
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
-  docs:
-    name: Docs build
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: docs
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-
-      - name: Install deps
-        run: npm install --no-audit --no-fund
-
-      - name: Build
-        run: npm run build
+  # The docs build lives in docs.yml, which now runs on pull requests as well
+  # as pushes (deploy steps are gated to non-PR). It used to be duplicated
+  # here, which meant maintaining the same build twice — and when the docs
+  # gained a private dependency only one copy got the auth token, so PRs
+  # failed with a 401 while main was fine. Do not add a docs job back here.
 
   docker-tools:
     name: Dockerfile.tools build + artifact smoke
@@ -430,7 +417,18 @@ jobs:
       # tsserver. All four binaries land in /usr/local/bin via npm's
       # global prefix on the ubuntu-latest runner image.
       - name: Install eslint + pyright + typescript-language-server
-        run: npm i -g eslint pyright typescript-language-server typescript
+        # typescript is PINNED to ^5 deliberately. TypeScript 7 is the native
+        # rewrite and no longer ships lib/tsserver.js — its lib/ contains
+        # getExePath.js and a native binary instead. typescript-language-server
+        # 5.x resolves tsserver from typescript/lib/tsserver.js, so an
+        # unpinned install silently started failing the day TS 7 released:
+        #
+        #   Could not find a valid TypeScript installation. Please ensure that
+        #   the "typescript" dependency is installed in the workspace ...
+        #
+        # Nothing in this repo changed. Unpin only when
+        # typescript-language-server supports the TS 7 layout.
+        run: npm i -g eslint pyright typescript-language-server 'typescript@^5'
 
       - name: Verify integration toolchain
         run: |
