@@ -11,9 +11,11 @@ export default defineConfig({
       title: 'Codegen Sandbox',
       description:
         'A Docker-based MCP server that ships safe codegen tools (Read, Edit, Write, Glob, Grep, Bash, run_tests, run_lint, run_typecheck) for PromptKit agents. Hook up vendor MCP servers alongside for web search / fetch.',
+      // Codegen Sandbox is a component of Omnia and gets no logo of its own:
+      // the header is the Omnia Star Tile plus the title as a wordmark.
       logo: {
-        src: './public/logo.svg',
-        alt: 'Codegen Sandbox',
+        src: './public/logo-omnia.svg',
+        alt: 'Omnia',
       },
       components: {
         PageFrame: './src/components/SitePageFrame.astro',
@@ -24,6 +26,9 @@ export default defineConfig({
         // Makes light the default sky. Starlight has no defaultTheme option;
         // see the component for what differs from the stock provider.
         ThemeProvider: './src/components/ThemeProvider.astro',
+        // The splash hero carries an eyebrow and a ConstellationGraph panel,
+        // neither of which Starlight's hero frontmatter can express.
+        Hero: './src/components/Hero.astro',
       },
       plugins: [starlightThemeGalaxy()],
       customCss: [
