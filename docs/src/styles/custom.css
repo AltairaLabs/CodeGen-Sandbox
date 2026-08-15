@@ -143,13 +143,23 @@ header.header {
 .sl-markdown-content h2 { font-size: 24px; line-height: 1.2; letter-spacing: var(--tracking-snug); }
 .sl-markdown-content p  { font-size: 16px; line-height: 1.65; text-wrap: pretty; }
 
-/* Tables — hairline instrument grid, mono header */
+/* Tables — hairline instrument grid, mono header.
+ *
+ * display:block + overflow-x:auto rather than the overflow:hidden the design
+ * bundle ships. Hidden does clip the corners to the radius, but it also
+ * silently cuts off any table wider than the content column — the language
+ * support matrices lost ~55px of their last column with no way to reach it.
+ * Markdown tables have no wrapper element to scroll instead, so the table
+ * itself becomes the scroll container. */
 .sl-markdown-content table {
   border: 1px solid var(--hairline);
   border-radius: var(--radius-2xl);
   border-collapse: separate;
   border-spacing: 0;
-  overflow: hidden;
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  overflow-x: auto;
 }
 .sl-markdown-content th {
   background: var(--surface-2);
