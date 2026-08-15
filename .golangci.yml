@@ -4,21 +4,19 @@ run:
   timeout: 5m
 
 linters:
-  disable-all: true
+  default: none
   enable:
     - errcheck
     - govet
     - staticcheck
     - ineffassign
     - unused
+    # revive runs its default rule set, which includes `exported` (doc
+    # comments on exported identifiers) plus ~20 more. Do not pin an
+    # explicit `rules:` list here — that replaces the defaults wholesale
+    # and silently narrows coverage.
     - revive
 
 formatters:
   enable:
     - gofmt
-
-linters-settings:
-  revive:
-    rules:
-      - name: exported
-        severity: warning
