@@ -1,44 +1,54 @@
 import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
 
+function cssVar(name, fallback) {
+  const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  return v || fallback;
+}
+
 function getThemeConfig() {
-  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-  const textColor = isDark ? '#e2e8f0' : '#1e293b';
+  // Read straight from the Atlas tokens so the diagrams re-skin with the
+  // rest of the page when data-theme flips. Fallbacks are the Atlas
+  // light-sky values, used only if the token sheet has not parsed yet.
+  const line = cssVar('--starlight-500', '#3b82f6');
+  const textColor = cssVar('--text-body', '#1e293b');
+  const labelColor = cssVar('--text-faint', '#5E708C');
 
   return {
     startOnLoad: false,
-    look: 'handDrawn',
+    // 'handDrawn' fights the instrument-grade Atlas register.
+    look: 'classic',
     theme: 'base',
     themeVariables: {
-      // No fills - transparent backgrounds
+      // No fills - transparent backgrounds over the Atlas canvas.
       primaryColor: 'transparent',
       secondaryColor: 'transparent',
       tertiaryColor: 'transparent',
-      // Blue borders matching Galaxy theme
-      primaryBorderColor: '#3b82f6',
-      secondaryBorderColor: '#3b82f6',
-      tertiaryBorderColor: '#3b82f6',
+      // Starlight-blue borders, matching ConstellationGraph edges.
+      primaryBorderColor: line,
+      secondaryBorderColor: line,
+      tertiaryBorderColor: line,
       // Text colors - match current mode
       primaryTextColor: textColor,
       secondaryTextColor: textColor,
       tertiaryTextColor: textColor,
-      // Lines and edges in blue
-      lineColor: '#3b82f6',
-      // Edge labels - blue text, no background
+      // Lines and edges
+      lineColor: line,
+      // Edge labels - no background
       edgeLabelBackground: 'transparent',
       labelBackground: 'transparent',
-      labelTextColor: '#3b82f6',
+      labelTextColor: labelColor,
       // Background
       background: 'transparent',
       mainBkg: 'transparent',
       nodeBkg: 'transparent',
       // Git graph specific
-      git0: '#3b82f6',
-      git1: '#3b82f6',
-      gitBranchLabel0: '#3b82f6',
-      gitBranchLabel1: '#3b82f6',
+      git0: line,
+      git1: line,
+      gitBranchLabel0: line,
+      gitBranchLabel1: line,
       commitLabelBackground: 'transparent',
       // Fonts
-      fontFamily: 'system-ui, -apple-system, sans-serif',
+      fontFamily: cssVar('--font-sans', 'system-ui, -apple-system, sans-serif'),
     },
   };
 }
@@ -121,11 +131,28 @@ if (document.readyState === 'loading') {
 // Re-run on Astro view transitions
 document.addEventListener('astro:page-load', renderMermaid);
 
+// Undo a previous render so the diagrams can be drawn again with new theme
+// colours. renderMermaid() deliberately skips anything already marked
+// processed, so without this the theme observer re-initialises mermaid but
+// leaves the old SVG on the page — which showed up as dark-on-dark labels
+// after switching to the night sky.
+function resetMermaid() {
+  document.querySelectorAll('.mermaid-container').forEach((c) => c.remove());
+  document.querySelectorAll('pre[data-mermaid-processed]').forEach((pre) => {
+    pre.removeAttribute('data-mermaid-processed');
+  });
+  document.querySelectorAll('[data-mermaid-hidden]').forEach((el) => {
+    el.style.display = '';
+    el.removeAttribute('data-mermaid-hidden');
+  });
+}
+
 // Re-render when theme changes
 const observer = new MutationObserver((mutations) => {
   for (const mutation of mutations) {
     if (mutation.attributeName === 'data-theme') {
       mermaid.initialize(getThemeConfig());
+      resetMermaid();
       renderMermaid();
     }
   }
