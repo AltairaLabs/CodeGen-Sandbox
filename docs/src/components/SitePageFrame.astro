@@ -1,11 +1,21 @@
 ---
 import Default from '@astrojs/starlight/components/PageFrame.astro';
 import AltairaFooter from './AltairaFooter.astro';
+
+/**
+ * Exposes the page's section as data-route so stylesheets can scope rules to
+ * a page type. The tool-reference schema tables are set in mono this way,
+ * without touching the 22 tools/*.md files or the prose tables elsewhere.
+ */
+const id = Astro.locals.starlightRoute?.id ?? '';
+const route = id.startsWith('tools/') ? 'tools' : 'doc';
 ---
 
-<Default {...Astro.props}>
-  <slot name="header" slot="header" />
-  <slot name="sidebar" slot="sidebar" />
-  <slot />
-</Default>
+<div data-route={route} style="display:contents">
+  <Default {...Astro.props}>
+    <slot name="header" slot="header" />
+    <slot name="sidebar" slot="sidebar" />
+    <slot />
+  </Default>
+</div>
 <AltairaFooter />

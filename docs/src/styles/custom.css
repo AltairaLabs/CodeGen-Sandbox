@@ -232,6 +232,32 @@ header.header {
   color: var(--text-faint);
 }
 
+/* ---- Tool-reference schema tables --------------------------------
+ * Machine data is lowercase mono. The tools/ pages use four different
+ * schema-table shapes, all sharing the first three columns:
+ *
+ *   11x  | Param | Type | Required | Notes |
+ *    7x  | Param | Type | Required | Default |
+ *    6x  | Param | Type | Required | Default | Notes |
+ *    5x  | Param | Type | Required |
+ *
+ * So columns 1-3 are always machine data and safe to set in mono.
+ * Column 4 is prose Notes more often than it is a Default value, so it is
+ * only treated as machine data when a 5th column proves the layout is the
+ * long form. Scoped to the tools route so prose tables elsewhere (the
+ * language-support matrices, concepts pages) are untouched.
+ *
+ * The design also calls for an affirmative Required to read in healthy
+ * green. That needs to match on cell text, which CSS cannot do, and the
+ * tool pages are styling-only in this pass — so Required stays mono and
+ * uncoloured rather than colouring "no" green along with "yes".
+ * ------------------------------------------------------------------ */
+[data-route='tools'] .sl-markdown-content table td:nth-child(-n + 3),
+[data-route='tools'] .sl-markdown-content table tr:has(td:nth-child(5)) td:nth-child(4) {
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+
 /* Reduced motion: remove entrances, never the element */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
