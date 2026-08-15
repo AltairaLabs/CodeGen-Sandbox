@@ -117,7 +117,9 @@
 /* ============================================================
    Chrome
    ============================================================ */
-.site-title,
+/* The hairline belongs to the header bar only. The design bundle's drop-in
+   listed .site-title in the same rule, which drew a stray rule under the
+   lockup itself on every page. */
 header.header {
   border-bottom: 1px solid var(--hairline);
 }
