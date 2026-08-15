@@ -258,6 +258,25 @@ header.header {
   font-size: 13px;
 }
 
+/* Home-page "next" footer row — hairline rule, mono label left, link right. */
+.cs-next {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding-top: 32px;
+  margin-top: 64px;
+  border-top: 1px solid var(--hairline);
+  flex-wrap: wrap;
+}
+.cs-next > span {
+  font: 400 13px/1.5 var(--font-mono);
+  color: var(--text-faint);
+}
+.cs-next > a {
+  font: 500 15px/1 var(--font-sans);
+}
+
 /* Reduced motion: remove entrances, never the element */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }

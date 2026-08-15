@@ -15,6 +15,7 @@ hero:
 ---
 
 import { Card, CardGrid } from '@astrojs/starlight/components';
+import Terminal from '../../components/Terminal.astro';
 
 ## What it is
 
@@ -43,21 +44,24 @@ The codegen sandbox is the **hands** of a PromptKit codegen agent. The agent (th
   </Card>
 </CardGrid>
 
+## Pull it, run it
+
+One container, one flag, one workspace mount. The sandbox is a provider behind PromptKit's agent — PromptKit asks for a sandbox, the provider returns an MCP endpoint.
+
+<Terminal
+  title="codegen-sandbox · local"
+  prompt="❯"
+  lines={[
+    { type: 'command', text: 'docker run -p 8080:8080 -v $PWD:/workspace ghcr.io/altairalabs/codegen-sandbox' },
+    { type: 'comment', text: '# mcp over http+sse · workspace mounted read-write' },
+    { type: 'success', text: 'codegen-sandbox listening on :8080 (workspace=/workspace)' },
+    { type: 'muted', text: '  32 tools registered · scrubbing on · denylist on' },
+  ]}
+/>
+
 ## How it fits
 
-The codegen sandbox is one **provider** behind PromptKit's agent — the piece that actually runs tool calls. PromptKit asks for "a sandbox"; the provider returns an MCP endpoint. The agent then calls tools over MCP; the sandbox executes them inside a container.
-
-```mermaid
-flowchart LR
-    A["PromptKit agent<br/><i>(brain)</i><br/>runs model<br/>holds context<br/>no exec privs"]
-    A -- "MCP (HTTP+SSE)" --> B["Sandbox container<br/><i>(hands)</i>"]
-    B --> T1["Read / Edit / Write"]
-    B --> T2["Glob / Grep / search_code"]
-    B --> T3["Bash (fg + bg)"]
-    B --> T4["run_tests / run_lint /<br/>run_typecheck"]
-    B --> T5["LSP / AST edits /<br/>render diagrams"]
-    B --> V[(workspace volume)]
-```
+The codegen sandbox is one **provider** behind PromptKit's agent — the piece that actually runs tool calls. PromptKit asks for "a sandbox"; the provider returns an MCP endpoint. The agent then calls tools over MCP; the sandbox executes them inside a container. The star chart at the top of this page is that path end to end.
 
 ## Defence in depth
 
@@ -84,4 +88,7 @@ flowchart TB
     Wire -- scrubbed text --> Agent
 ```
 
-[Next: Getting Started →](/getting-started/)
+<div class="cs-next">
+  <span>next · getting started</span>
+  <a href="/getting-started/">Build, run and talk to the sandbox →</a>
+</div>
