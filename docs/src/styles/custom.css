@@ -1,35 +1,238 @@
-/* Codegen Sandbox custom theme
- * Pins Galaxy's accent to the brand blue/cyan that the logo and the
- * Mermaid diagrams use, mirroring the override pattern PromptKit uses to
- * pin Galaxy's accent to its brand purple.
- *
- * Logo gradient: #3b82f6 (blue-500) → #06b6d4 (cyan-500) → #0891b2 (cyan-600)
- */
+/* ============================================================
+   Codegen Sandbox docs — Atlas (AltairaLabs design system)
 
+   Maps Starlight's design tokens onto Atlas tokens. Light is the
+   default sky here ("the printed star chart"); dark is the night sky.
+
+   The Atlas token files are vendored under ./atlas/ and listed ahead
+   of this file in docs/astro.config.mjs customCss.
+   ============================================================ */
+
+/* ---- Families ------------------------------------------------ */
 :root {
-  --sl-font-system-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo,
-    Consolas, "Liberation Mono", monospace;
+  --sl-font: var(--font-sans);
+  --sl-font-mono: var(--font-mono);
+  --sl-font-system: var(--font-sans);
+  --sl-font-system-mono: var(--font-mono);
+
+  /* 58px docs header, PLUS the family-bar strip stacked above it.
+     @altairalabs/brand/family-bar-starlight.css sets this to
+     calc(3.5rem + var(--fam-h)); this file loads after it, so a flat value
+     here would clobber that and reserve 58px for ~101px of chrome — the
+     header then overlaps the first screenful. Keep the --fam-h term. */
+  --sl-nav-height: calc(3.625rem + var(--fam-h, 0px));
+  --sl-sidebar-width: 16rem;   /* 256px */
+  --sl-content-width: 45rem;
 }
 
-/* Dark mode (Galaxy default) — accents lifted toward sky/cyan-400 so they
-   stay readable on the dark cosmic background. */
+/* ============================================================
+   DARK — the night sky
+   ============================================================ */
 :root,
 ::backdrop {
-  --sl-color-accent: hsl(199, 89%, 60%);       /* sky-400-ish #38bdf8 */
-  --sl-color-accent-low: hsl(199, 89%, 30%);
-  --sl-color-accent-high: #a5f3fc;             /* cyan-200 */
+  --sl-color-white: var(--star-100);
+  --sl-color-gray-1: var(--star-200);
+  --sl-color-gray-2: var(--star-400);
+  --sl-color-gray-3: var(--star-600);
+  --sl-color-gray-4: var(--star-800);
+  --sl-color-gray-5: var(--ink-hairline);
+  --sl-color-gray-6: var(--ink-surface);
+  --sl-color-gray-7: var(--ink-raised);
+  --sl-color-black: var(--ink-canvas);
 
-  --fb-steps-bg-color: var(--sl-color-accent-high);
-  --fb-toc-color-current-bg: rgba(56, 189, 248, 0.2);
+  --sl-color-text: var(--text-body);
+  --sl-color-text-accent: var(--text-link);
+  --sl-color-text-invert: var(--gold-ink);
+
+  --sl-color-bg: var(--bg-app);
+  --sl-color-bg-nav: var(--bg-app);
+  --sl-color-bg-sidebar: var(--bg-app);
+  --sl-color-bg-inline-code: var(--surface-2);
+  --sl-color-bg-accent: var(--accent-inter);
+
+  --sl-color-hairline: var(--hairline);
+  --sl-color-hairline-light: var(--hairline-faint);
+  --sl-color-hairline-shade: var(--hairline-strong);
+
+  /* Starlight's accent = Atlas starlight blue (interaction).
+     Gold is NOT an accent token — it is applied once per view, by hand,
+     to the single primary action (see .cs-cta-primary below). */
+  --sl-color-accent: var(--starlight-500);
+  --sl-color-accent-low: var(--starlight-tint);
+  --sl-color-accent-high: var(--starlight-300);
+
+  /* Asides / callouts */
+  --sl-color-blue: var(--starlight-500);
+  --sl-color-blue-low: var(--starlight-tint);
+  --sl-color-blue-high: var(--starlight-300);
+  --sl-color-green: var(--pulsar-500);
+  --sl-color-green-low: var(--pulsar-tint);
+  --sl-color-green-high: var(--pulsar-300);
+  --sl-color-orange: var(--amber-500);
+  --sl-color-orange-low: var(--amber-tint);
+  --sl-color-orange-high: var(--amber-300);
+  --sl-color-red: var(--signal-red);
+  --sl-color-red-low: var(--red-tint);
+  --sl-color-red-high: var(--signal-red-300);
+
+  /* Shiki / code surfaces — deepest ink */
+  --astro-code-color-background: var(--surface-code);
+  --astro-code-color-text: var(--starlight-200);
+
+  /* Galaxy theme leftovers */
+  --fb-steps-bg-color: var(--starlight-300);
+  --fb-toc-color-current-bg: var(--starlight-tint);
 }
 
-/* Light mode — slightly darker for contrast on light backgrounds. */
+/* ============================================================
+   LIGHT — the printed star chart (the default for this site)
+   Atlas re-points its own ramps under [data-theme="light"], so the
+   mappings above mostly follow automatically. Only the values that
+   must NOT follow are restated here.
+   ============================================================ */
 :root[data-theme='light'] {
-  --sl-color-accent: hsl(199, 89%, 48%);       /* sky-500 #0ea5e9 */
-  --sl-color-accent-low: hsl(199, 89%, 90%);
-  --sl-color-accent-high: hsl(199, 89%, 35%);
-
-  --fb-steps-bg-color: hsl(199, 89%, 48%);
-  --fb-toc-color-current-bg: rgba(14, 165, 233, 0.15);
+  --sl-color-accent: #2563EB;          /* starlight deepens on paper */
+  --sl-color-accent-high: #1D4ED8;
+  --sl-color-text-invert: var(--gold-ink);
+  --astro-code-color-text: var(--star-400);
 }
 
+/* ============================================================
+   Chrome
+   ============================================================ */
+.site-title,
+header.header {
+  border-bottom: 1px solid var(--hairline);
+}
+
+/* Header lockup: Omnia Star Tile + wordmark. No separate product logo. */
+.site-title img { width: 24px; height: 24px; }
+.site-title {
+  font: 600 15px/1 var(--font-sans);
+  letter-spacing: var(--tracking-snug);
+  color: var(--text-heading);
+}
+
+/* Sidebar — mono for tool names, hairline group rules */
+.sidebar-content summary,
+.sidebar-content > ul > li > span {
+  font: 500 11px/1 var(--font-mono);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.sidebar-content a {
+  font: 500 13px/1.3 var(--font-sans);
+  border-radius: var(--radius-md);
+  color: var(--text-body);
+}
+.sidebar-content a[aria-current='page'] {
+  color: var(--accent-inter);
+  background: var(--starlight-tint);
+  font-weight: 500;
+}
+
+/* Headings — tight tracking, Space Grotesk 600 */
+.sl-markdown-content :is(h1, h2, h3, h4) {
+  font-family: var(--font-sans);
+  font-weight: 600;
+  letter-spacing: var(--tracking-tight);
+  color: var(--text-heading);
+}
+.sl-markdown-content h1 { font-size: 40px; line-height: 1.1; }
+.sl-markdown-content h2 { font-size: 24px; line-height: 1.2; letter-spacing: var(--tracking-snug); }
+.sl-markdown-content p  { font-size: 16px; line-height: 1.65; text-wrap: pretty; }
+
+/* Tables — hairline instrument grid, mono header */
+.sl-markdown-content table {
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-2xl);
+  border-collapse: separate;
+  border-spacing: 0;
+  overflow: hidden;
+}
+.sl-markdown-content th {
+  background: var(--surface-2);
+  font: 500 11px/1 var(--font-mono);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--text-faint);
+  text-align: left;
+  padding: 12px 18px;
+}
+.sl-markdown-content td {
+  border-top: 1px solid var(--hairline-faint);
+  font: 400 14px/1.5 var(--font-sans);
+  padding: 14px 18px;
+}
+
+/* Cards — ink surface, hairline, 14px radius, no shadow */
+.card {
+  background: var(--surface-card);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-2xl);
+  box-shadow: none;
+  padding: 22px;
+}
+.card .title { font: 600 17px/1.2 var(--font-sans); color: var(--text-heading); }
+.card .icon { color: var(--accent-node); }
+
+/* Code — deepest ink, 8px radius */
+.expressive-code .frame,
+.sl-markdown-content pre {
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-lg);
+  background: var(--surface-code);
+  font-family: var(--font-mono);
+}
+.sl-markdown-content code:not(pre code) {
+  font-family: var(--font-mono);
+  background: var(--surface-2);
+  border-radius: var(--radius-xs);
+}
+
+/* Links */
+.sl-markdown-content a { color: var(--accent-inter); text-decoration: none; border-bottom: 1px solid transparent; }
+.sl-markdown-content a:hover { border-bottom-color: var(--accent-inter); }
+
+/* Hero (splash template) — one soft starlight atmosphere, no gradient mesh */
+.hero {
+  background: var(--atmo-starlight);
+  border-bottom: 1px solid var(--hairline);
+}
+.hero h1 {
+  font: 600 46px/1.06 var(--font-sans);
+  letter-spacing: var(--tracking-hero);
+  color: var(--text-heading);
+}
+.hero .tagline { font: 400 20px/1.55 var(--font-sans); color: var(--text-muted); max-width: 44ch; }
+
+/* Hero actions: exactly ONE gold star per view — the primary CTA. */
+.hero .action.primary {
+  background: var(--gold-500);
+  color: var(--text-on-gold);
+  border: 1px solid var(--gold-500);
+  border-radius: var(--radius-md);
+  box-shadow: var(--glow-gold);
+  font: 500 15px/1 var(--font-sans);
+}
+.hero .action.minimal {
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-md);
+  color: var(--text-body);
+  background: transparent;
+}
+.hero .action.minimal:hover { border-color: var(--border-strong); color: var(--text-heading); }
+
+/* Eyebrows / mono labels — never gold (chrome takes no gold) */
+.cs-eyebrow {
+  font: 500 11px/1 var(--font-mono);
+  letter-spacing: var(--tracking-eyebrow);
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+/* Reduced motion: remove entrances, never the element */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}

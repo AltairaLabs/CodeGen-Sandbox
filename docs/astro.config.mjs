@@ -21,6 +21,9 @@ export default defineConfig({
         // top of the fixed header. Paired with the --fam-h rules in
         // src/styles/custom.css, which reserve its height.
         Header: './src/components/Header.astro',
+        // Makes light the default sky. Starlight has no defaultTheme option;
+        // see the component for what differs from the stock provider.
+        ThemeProvider: './src/components/ThemeProvider.astro',
       },
       plugins: [starlightThemeGalaxy()],
       customCss: [
