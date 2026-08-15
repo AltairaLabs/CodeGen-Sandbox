@@ -1,7 +1,6 @@
 // @ts-check
 import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
-import starlightThemeGalaxy from 'starlight-theme-galaxy';
 
 // https://astro.build/config
 export default defineConfig({
@@ -31,7 +30,10 @@ export default defineConfig({
         // neither of which Starlight's hero frontmatter can express.
         Hero: './src/components/Hero.astro',
       },
-      plugins: [starlightThemeGalaxy()],
+      // No starlight-theme-galaxy: the Atlas mapping supersedes its accent
+      // pin, omnia doesn't use it and promptkit never registers it, and it
+      // shipped ~13 woff2 of Inter + JetBrains Mono this site never renders
+      // plus a gradient rule under every H2 that Atlas does not specify.
       customCss: ['@altairalabs/brand/family-bar-starlight.css', './src/styles/custom.css'],
       // Code blocks: inky Atlas surfaces + starlight-leaning syntax
       // (poimandres for the night sky, a light theme for the printed chart).

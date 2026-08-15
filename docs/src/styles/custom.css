@@ -99,10 +99,6 @@
   /* Shiki / code surfaces — deepest ink */
   --astro-code-color-background: var(--surface-code);
   --astro-code-color-text: var(--starlight-200);
-
-  /* Galaxy theme leftovers */
-  --fb-steps-bg-color: var(--starlight-300);
-  --fb-toc-color-current-bg: var(--starlight-tint);
 }
 
 /* ============================================================
@@ -162,6 +158,15 @@ header.header {
 }
 .sl-markdown-content h1 { font-size: 40px; line-height: 1.1; }
 .sl-markdown-content h2 { font-size: 24px; line-height: 1.2; letter-spacing: var(--tracking-snug); }
+
+/* The landing page runs the full Atlas type scale: section heads are 34px
+   there, not the 24px a reference page uses. (The design bundle's own
+   drop-in set 24px globally, which contradicts its type scale sheet.) */
+[data-route='home'] .sl-markdown-content h2 {
+  font-size: 34px;
+  line-height: 1.12;
+  letter-spacing: var(--tracking-tight);
+}
 .sl-markdown-content p  { font-size: 16px; line-height: 1.65; text-wrap: pretty; }
 
 /* Tables — hairline instrument grid, mono header.
@@ -288,6 +293,40 @@ header.header {
   font-family: var(--font-mono);
   font-size: 13px;
 }
+
+/* ---- Tool-surface card grid (home) -------------------------------
+ * The design specifies a plain auto-fit grid and a 6px node-colour dot
+ * ahead of each card title — not Starlight's icon slot. Two of the icon
+ * names the page used (seti:bash, shield) resolve to an empty <svg> in
+ * this Starlight version, so the dots also remove a rendering bug.
+ * ------------------------------------------------------------------ */
+[data-route='home'] .card-grid {
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 16px;
+}
+
+[data-route='home'] .card .title {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+[data-route='home'] .card .title::before {
+  content: '';
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--card-dot, var(--accent-node));
+}
+
+/* Dot colours key to node kinds, in the order the cards are authored. */
+[data-route='home'] .card:nth-child(1) { --card-dot: var(--node-agent); }
+[data-route='home'] .card:nth-child(2) { --card-dot: var(--node-tool); }
+[data-route='home'] .card:nth-child(3) { --card-dot: var(--node-prompt); }
+[data-route='home'] .card:nth-child(4) { --card-dot: var(--status-healthy); }
+[data-route='home'] .card:nth-child(5) { --card-dot: var(--node-branch); }
+[data-route='home'] .card:nth-child(6) { --card-dot: var(--node-output); }
 
 /* Home-page "next" footer row — hairline rule, mono label left, link right. */
 .cs-next {

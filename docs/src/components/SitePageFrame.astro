@@ -15,7 +15,7 @@ import SiteFooter from './landing/SiteFooter.astro';
  * screen, so it is mounted site-wide here.
  */
 const id = Astro.locals.starlightRoute?.id ?? '';
-const route = id.startsWith('tools/') ? 'tools' : 'doc';
+const route = id === '' || id === 'index' ? 'home' : id.startsWith('tools/') ? 'tools' : 'doc';
 ---
 
 <div data-route={route} style="display:contents">

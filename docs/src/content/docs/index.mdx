@@ -2,6 +2,12 @@
 title: Codegen Sandbox
 description: A Docker-based MCP server shipping safe codegen tools for PromptKit agents.
 template: splash
+# The page title matches the site title, so Starlight's default composition
+# renders "Codegen Sandbox | Codegen Sandbox" in the tab and in search
+# results. Override the whole title for this page only.
+head:
+  - tag: title
+    content: Codegen Sandbox — safe codegen tools for PromptKit agents
 hero:
   tagline: Safe, structured, containerised tools that let a PromptKit agent read, edit, and verify code — separated from the agent's runtime by an MCP wire.
   actions:
@@ -23,23 +29,23 @@ The codegen sandbox is the **hands** of a PromptKit codegen agent. The agent (th
 
 ## Tool surface
 
-<CardGrid stagger>
-  <Card title="Filesystem" icon="document">
+<CardGrid>
+  <Card title="Filesystem">
     **Read**, **Write**, **Edit** operate on a single workspace root. Every path is resolved and checked for containment before any I/O. Edit returns post-edit lint findings inline.
   </Card>
-  <Card title="Search" icon="magnifier">
+  <Card title="Search">
     **Glob** (mtime-sorted, gitignore-aware) and **Grep** (ripgrep-backed) for fast navigation. Structured `file:line:rule: message` output on lint results.
   </Card>
-  <Card title="Shell" icon="seti:bash">
+  <Card title="Shell">
     **Bash** foreground + background (via `BashOutput` / `KillShell`). Per-call timeouts kill the whole process group; a small denylist catches footguns.
   </Card>
-  <Card title="Verification" icon="approve-check">
+  <Card title="Verification">
     **run_tests**, **run_lint**, **run_typecheck** use project-type detection (Go today; more languages behind the Detector interface) to run the right command.
   </Card>
-  <Card title="Vendor MCP for the web" icon="rss">
+  <Card title="Vendor MCP for the web">
     The sandbox deliberately doesn't ship WebFetch/WebSearch — wire vendor MCP servers (Brave, Exa, Tavily, official `fetch`) alongside it instead. See [non-sandbox tools](/concepts/non-sandbox-tools/).
   </Card>
-  <Card title="Safe by default" icon="shield">
+  <Card title="Safe by default">
     Path containment, command denylist, secret scrubbing — layered defence-in-depth. The Docker container is the real trust boundary.
   </Card>
 </CardGrid>
