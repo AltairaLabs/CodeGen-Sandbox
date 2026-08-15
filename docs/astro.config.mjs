@@ -23,7 +23,19 @@ export default defineConfig({
         Header: './src/components/Header.astro',
       },
       plugins: [starlightThemeGalaxy()],
-      customCss: ['@altairalabs/brand/family-bar-starlight.css', './src/styles/custom.css'],
+      customCss: [
+        // Atlas design tokens first — every stylesheet below resolves var(--*)
+        // against these. Order within the group matters: fonts and colors
+        // define what typography/effects/theme-light reference.
+        './src/styles/atlas/fonts.css',
+        './src/styles/atlas/colors.css',
+        './src/styles/atlas/typography.css',
+        './src/styles/atlas/spacing.css',
+        './src/styles/atlas/effects.css',
+        './src/styles/atlas/theme-light.css',
+        '@altairalabs/brand/family-bar-starlight.css',
+        './src/styles/custom.css',
+      ],
       social: [
         {
           icon: 'github',
