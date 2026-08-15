@@ -14,8 +14,9 @@ export default defineConfig({
       // Codegen Sandbox is a component of Omnia and gets no logo of its own:
       // the header is the Omnia Star Tile plus the title as a wordmark.
       logo: {
-        src: './public/logo-omnia.svg',
+        src: './public/atlas/logo-omnia.svg',
         alt: 'Omnia',
+        replacesTitle: false,
       },
       components: {
         PageFrame: './src/components/SitePageFrame.astro',
@@ -31,19 +32,29 @@ export default defineConfig({
         Hero: './src/components/Hero.astro',
       },
       plugins: [starlightThemeGalaxy()],
-      customCss: [
-        // Atlas design tokens first — every stylesheet below resolves var(--*)
-        // against these. Order within the group matters: fonts and colors
-        // define what typography/effects/theme-light reference.
-        './src/styles/atlas/fonts.css',
-        './src/styles/atlas/colors.css',
-        './src/styles/atlas/typography.css',
-        './src/styles/atlas/spacing.css',
-        './src/styles/atlas/effects.css',
-        './src/styles/atlas/theme-light.css',
-        '@altairalabs/brand/family-bar-starlight.css',
-        './src/styles/custom.css',
-      ],
+      customCss: ['@altairalabs/brand/family-bar-starlight.css', './src/styles/custom.css'],
+      // Code blocks: inky Atlas surfaces + starlight-leaning syntax
+      // (poimandres for the night sky, a light theme for the printed chart).
+      // Mirrors omnia's block — Codegen Sandbox takes the Omnia register.
+      expressiveCode: {
+        themes: ['poimandres', 'github-light'],
+        styleOverrides: {
+          borderColor: 'var(--hairline)',
+          borderRadius: 'var(--radius-lg)',
+          codeBackground: 'var(--surface-code)',
+          codeFontFamily: 'var(--font-mono)',
+          codeFontSize: '13.5px',
+          uiFontFamily: 'var(--font-sans)',
+          frames: {
+            editorActiveTabBackground: 'var(--surface-2)',
+            editorActiveTabIndicatorBottomColor: 'var(--accent-inter)',
+            editorTabBarBackground: 'var(--ink-void)',
+            editorBackground: 'var(--surface-code)',
+            terminalBackground: 'var(--surface-code)',
+            terminalTitlebarBackground: 'var(--ink-void)',
+          },
+        },
+      },
       social: [
         {
           icon: 'github',

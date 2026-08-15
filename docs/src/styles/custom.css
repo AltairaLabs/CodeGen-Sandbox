@@ -1,11 +1,32 @@
+/* Fonts (self-hosted via Fontsource) */
+@import '@fontsource/space-grotesk/400.css';
+@import '@fontsource/space-grotesk/500.css';
+@import '@fontsource/space-grotesk/600.css';
+@import '@fontsource/space-grotesk/700.css';
+@import '@fontsource/spline-sans-mono/400.css';
+@import '@fontsource/spline-sans-mono/500.css';
+
+/* Atlas token layer */
+@import './atlas/colors.css';
+@import './atlas/typography.css';
+@import './atlas/spacing.css';
+@import './atlas/effects.css';
+@import './atlas/theme-light.css';
+
 /* ============================================================
    Codegen Sandbox docs — Atlas (AltairaLabs design system)
 
    Maps Starlight's design tokens onto Atlas tokens. Light is the
    default sky here ("the printed star chart"); dark is the night sky.
 
-   The Atlas token files are vendored under ./atlas/ and listed ahead
-   of this file in docs/astro.config.mjs customCss.
+   Loading follows the omnia/promptkit convention: the token layer is
+   @import-ed here, so astro.config.mjs customCss stays two entries.
+   The token files themselves are vendored verbatim from the Atlas
+   handoff and are re-vendorable — hence the design system's own
+   category split (colors/typography/spacing/effects/theme-light)
+   rather than the siblings' tokens/semantic/starlight-map layering.
+   Their trio predates this token set and lacks 24 of the vars this
+   design needs (node colours, radii, tracking, glow, accents).
    ============================================================ */
 
 /* ---- Families ------------------------------------------------ */
@@ -285,6 +306,35 @@ header.header {
 }
 .cs-next > a {
   font: 500 15px/1 var(--font-sans);
+}
+
+/* ---- Site footer (landing/SiteFooter.astro) ----------------------
+ * The component is a verbatim port of the omnia/promptkit footer, whose
+ * own <style> block is byte-identical between those two repos — so the
+ * two rules it depends on from outside live here rather than in it.
+ *
+ * .atlas-inner is defined in the siblings' src/pages/index.astro, the
+ * standalone landing page that hosts their footer. This site has no such
+ * page (its home is a Starlight splash), so the container rule is ported
+ * here instead.
+ *
+ * The inline-start offset is ours alone: the siblings mount the footer
+ * only on a landing page with no sidebar, whereas this site renders it on
+ * every doc page beneath Starlight's position:fixed sidebar. Same token
+ * Starlight gives .main-frame; 0 below the sidebar breakpoint.
+ * ------------------------------------------------------------------ */
+.site-footer .atlas-inner {
+  max-width: 1120px;
+  margin: 0 auto;
+}
+
+/* The siblings' landing page carries `a { color: inherit; text-decoration:
+   none }` as a global reset, which the footer's own styles assume. Inside
+   Starlight the doc link styles apply instead and underline everything, so
+   the reset is scoped to the footer here. */
+.site-footer a {
+  color: inherit;
+  text-decoration: none;
 }
 
 /* Reduced motion: remove entrances, never the element */

@@ -1,11 +1,18 @@
 ---
 import Default from '@astrojs/starlight/components/PageFrame.astro';
-import AltairaFooter from './AltairaFooter.astro';
+import SiteFooter from './landing/SiteFooter.astro';
 
 /**
  * Exposes the page's section as data-route so stylesheets can scope rules to
  * a page type. The tool-reference schema tables are set in mono this way,
  * without touching the 22 tools/*.md files or the prose tables elsewhere.
+ *
+ * Also mounts the shared AltairaLabs SiteFooter. Note this diverges from
+ * omnia/promptkit, which render the same component only on their standalone
+ * src/pages/index.astro landing page and leave Starlight doc pages with just
+ * the stock prev/next footer. This site has no separate landing page — its
+ * home is a Starlight splash — and the design handoff puts a footer on every
+ * screen, so it is mounted site-wide here.
  */
 const id = Astro.locals.starlightRoute?.id ?? '';
 const route = id.startsWith('tools/') ? 'tools' : 'doc';
@@ -18,4 +25,19 @@ const route = id.startsWith('tools/') ? 'tools' : 'doc';
     <slot />
   </Default>
 </div>
-<AltairaFooter />
+<div class="site-footer-frame">
+  <SiteFooter />
+</div>
+
+<style>
+  /* The siblings mount SiteFooter on a landing page with no sidebar; here it
+     sits on every doc page under Starlight's position:fixed sidebar, so it
+     needs the same inline-start offset Starlight gives .main-frame (0 below
+     the sidebar breakpoint). It lives on this wrapper rather than on
+     .site-footer because the component's own scoped `padding` shorthand
+     outranks — and would reset — an external padding-inline-start. */
+  .site-footer-frame {
+    box-sizing: border-box;
+    padding-inline-start: var(--sl-content-inline-start, 0px);
+  }
+</style>
