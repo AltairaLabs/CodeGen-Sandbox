@@ -2,9 +2,13 @@
 title: Codegen Sandbox
 description: A Docker-based MCP server shipping safe codegen tools for PromptKit agents.
 template: splash
+# The page title matches the site title, so Starlight's default composition
+# renders "Codegen Sandbox | Codegen Sandbox" in the tab and in search
+# results. Override the whole title for this page only.
+head:
+  - tag: title
+    content: Codegen Sandbox — safe codegen tools for PromptKit agents
 hero:
-  image:
-    html: <img src="/hero-architecture.svg" alt="A PromptKit agent on the left dispatches MCP tool calls to three isolated sandbox containers on the right; shields on each sandbox indicate the trust boundary." width="800" />
   tagline: Safe, structured, containerised tools that let a PromptKit agent read, edit, and verify code — separated from the agent's runtime by an MCP wire.
   actions:
     - text: Getting Started
@@ -17,6 +21,7 @@ hero:
 ---
 
 import { Card, CardGrid } from '@astrojs/starlight/components';
+import Terminal from '../../components/Terminal.astro';
 
 ## What it is
 
@@ -24,42 +29,45 @@ The codegen sandbox is the **hands** of a PromptKit codegen agent. The agent (th
 
 ## Tool surface
 
-<CardGrid stagger>
-  <Card title="Filesystem" icon="document">
+<CardGrid>
+  <Card title="Filesystem">
     **Read**, **Write**, **Edit** operate on a single workspace root. Every path is resolved and checked for containment before any I/O. Edit returns post-edit lint findings inline.
   </Card>
-  <Card title="Search" icon="magnifier">
+  <Card title="Search">
     **Glob** (mtime-sorted, gitignore-aware) and **Grep** (ripgrep-backed) for fast navigation. Structured `file:line:rule: message` output on lint results.
   </Card>
-  <Card title="Shell" icon="seti:bash">
+  <Card title="Shell">
     **Bash** foreground + background (via `BashOutput` / `KillShell`). Per-call timeouts kill the whole process group; a small denylist catches footguns.
   </Card>
-  <Card title="Verification" icon="approve-check">
+  <Card title="Verification">
     **run_tests**, **run_lint**, **run_typecheck** use project-type detection (Go today; more languages behind the Detector interface) to run the right command.
   </Card>
-  <Card title="Vendor MCP for the web" icon="rss">
+  <Card title="Vendor MCP for the web">
     The sandbox deliberately doesn't ship WebFetch/WebSearch — wire vendor MCP servers (Brave, Exa, Tavily, official `fetch`) alongside it instead. See [non-sandbox tools](/concepts/non-sandbox-tools/).
   </Card>
-  <Card title="Safe by default" icon="shield">
+  <Card title="Safe by default">
     Path containment, command denylist, secret scrubbing — layered defence-in-depth. The Docker container is the real trust boundary.
   </Card>
 </CardGrid>
 
+## Pull it, run it
+
+One container, one flag, one workspace mount. The sandbox is a provider behind PromptKit's agent — PromptKit asks for a sandbox, the provider returns an MCP endpoint.
+
+<Terminal
+  title="codegen-sandbox · local"
+  prompt="❯"
+  lines={[
+    { type: 'command', text: 'docker run -p 8080:8080 -v $PWD:/workspace ghcr.io/altairalabs/codegen-sandbox' },
+    { type: 'comment', text: '# mcp over http+sse · workspace mounted read-write' },
+    { type: 'success', text: 'codegen-sandbox listening on :8080 (workspace=/workspace)' },
+    { type: 'muted', text: '  32 tools registered · scrubbing on · denylist on' },
+  ]}
+/>
+
 ## How it fits
 
-The codegen sandbox is one **provider** behind PromptKit's agent — the piece that actually runs tool calls. PromptKit asks for "a sandbox"; the provider returns an MCP endpoint. The agent then calls tools over MCP; the sandbox executes them inside a container.
-
-```mermaid
-flowchart LR
-    A["PromptKit agent<br/><i>(brain)</i><br/>runs model<br/>holds context<br/>no exec privs"]
-    A -- "MCP (HTTP+SSE)" --> B["Sandbox container<br/><i>(hands)</i>"]
-    B --> T1["Read / Edit / Write"]
-    B --> T2["Glob / Grep / search_code"]
-    B --> T3["Bash (fg + bg)"]
-    B --> T4["run_tests / run_lint /<br/>run_typecheck"]
-    B --> T5["LSP / AST edits /<br/>render diagrams"]
-    B --> V[(workspace volume)]
-```
+The codegen sandbox is one **provider** behind PromptKit's agent — the piece that actually runs tool calls. PromptKit asks for "a sandbox"; the provider returns an MCP endpoint. The agent then calls tools over MCP; the sandbox executes them inside a container. The star chart at the top of this page is that path end to end.
 
 ## Defence in depth
 
@@ -86,4 +94,7 @@ flowchart TB
     Wire -- scrubbed text --> Agent
 ```
 
-[Next: Getting Started →](/getting-started/)
+<div class="cs-next">
+  <span>next · getting started</span>
+  <a href="/getting-started/">Build, run and talk to the sandbox →</a>
+</div>

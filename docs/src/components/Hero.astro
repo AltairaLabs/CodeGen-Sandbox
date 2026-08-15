@@ -1,0 +1,164 @@
+---
+import ConstellationGraph from './ConstellationGraph.astro';
+
+/**
+ * Splash hero for the home page. Overrides Starlight's default Hero so the
+ * page can carry the Atlas eyebrow and the brain/hands star chart.
+ *
+ * The tagline and actions still come from index.mdx so the copy stays with
+ * the content. The H1 and eyebrow are design-owned and live here.
+ *
+ * Starlight moved route data from Astro.props to Astro.locals.starlightRoute
+ * in 0.32. The sibling overrides in this repo still use the Astro.props
+ * form, so read both and prefer whichever is populated.
+ */
+const route = (Astro.locals as any).starlightRoute ?? (Astro.props as any);
+const hero = route?.entry?.data?.hero ?? {};
+const tagline: string = hero.tagline ?? '';
+const actions: { text: string; link: string; variant?: string }[] = hero.actions ?? [];
+
+if (!tagline) {
+  // Fail loudly rather than shipping a hero with a missing tagline.
+  throw new Error(
+    'Hero.astro: could not read hero frontmatter. Check whether this Starlight ' +
+      'version exposes route data on Astro.locals.starlightRoute or Astro.props.'
+  );
+}
+
+const heroNodes = [
+  { id: 'brain', x: 46, y: 120, kind: 'entry' as const, label: 'agent · brain' },
+  { id: 'wire', x: 160, y: 120, kind: 'branch' as const, label: 'mcp wire' },
+  { id: 'fs', x: 290, y: 44, kind: 'tool' as const, label: 'filesystem' },
+  { id: 'sh', x: 290, y: 120, kind: 'tool' as const, label: 'shell' },
+  { id: 'vf', x: 290, y: 196, kind: 'tool' as const, label: 'verification' },
+  { id: 'vol', x: 424, y: 120, kind: 'output' as const, label: 'workspace' },
+];
+const heroEdges = [
+  { from: 'brain', to: 'wire' },
+  { from: 'wire', to: 'fs' },
+  { from: 'wire', to: 'sh' },
+  { from: 'wire', to: 'vf' },
+  { from: 'fs', to: 'vol' },
+  { from: 'sh', to: 'vol' },
+  { from: 'vf', to: 'vol' },
+];
+---
+
+<div class="cs-hero">
+  <div class="cs-hero-inner">
+    <div class="cs-hero-copy">
+      <p class="cs-eyebrow">MCP provider · promptkit codegen</p>
+      <h1>The agent thinks.<br />The sandbox has the hands.</h1>
+      <p class="cs-tagline">{tagline}</p>
+      <div class="cs-actions">
+        {
+          actions.map((a) => (
+            <a
+              href={a.link}
+              class={`cs-action ${a.variant === 'primary' ? 'primary' : 'minimal'}`}
+            >
+              {a.text}
+            </a>
+          ))
+        }
+      </div>
+    </div>
+
+    <div class="cs-hero-panel">
+      <p class="cs-panel-caption">brain / hands · one mcp wire</p>
+      <ConstellationGraph
+        nodes={heroNodes}
+        edges={heroEdges}
+        width={470}
+        height={240}
+        showLabels
+        title="A PromptKit agent sends tool calls over an MCP wire to filesystem, shell and verification tools, which act on a shared workspace."
+      />
+    </div>
+  </div>
+</div>
+
+<style>
+  /* Full-bleed band. Starlight pads the content column, so the hero pulls
+     back out to the viewport edge. */
+  .cs-hero {
+    background: var(--atmo-starlight);
+    border-bottom: 1px solid var(--hairline);
+    padding: 76px 48px 64px;
+    margin-inline: calc(-1 * var(--sl-content-pad-x, 1.5rem));
+  }
+  .cs-hero-inner {
+    max-width: 1080px;
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+    gap: 48px;
+    align-items: center;
+  }
+  .cs-eyebrow {
+    font: 500 11px/1 var(--font-mono);
+    letter-spacing: var(--tracking-eyebrow);
+    text-transform: uppercase;
+    color: var(--text-faint);
+    margin: 0 0 20px;
+  }
+  .cs-hero-copy h1 {
+    margin: 0 0 20px;
+    font: 600 46px/1.06 var(--font-sans);
+    letter-spacing: var(--tracking-hero);
+    color: var(--text-heading);
+    text-wrap: pretty;
+  }
+  .cs-tagline {
+    margin: 0 0 32px;
+    max-width: 44ch;
+    font: 400 20px/1.55 var(--font-sans);
+    color: var(--text-muted);
+    text-wrap: pretty;
+  }
+  .cs-actions {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .cs-action {
+    display: inline-flex;
+    align-items: center;
+    padding: 0 20px;
+    height: 44px;
+    border-radius: var(--radius-md);
+    font: 500 15px/1 var(--font-sans);
+    text-decoration: none;
+  }
+  /* The one gold element on the page. */
+  .cs-action.primary {
+    background: var(--gold-500);
+    color: var(--text-on-gold);
+    border: 1px solid var(--gold-500);
+    box-shadow: var(--glow-gold);
+  }
+  .cs-action.minimal {
+    border: 1px solid var(--hairline-strong);
+    color: var(--text-body);
+    background: transparent;
+  }
+  .cs-action.minimal:hover {
+    border-color: var(--border-strong);
+    color: var(--text-heading);
+  }
+  .cs-hero-panel {
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-3xl);
+    background: var(--surface-1);
+    padding: 18px 16px;
+  }
+  .cs-panel-caption {
+    font: 500 11px/1 var(--font-mono);
+    letter-spacing: var(--tracking-label);
+    text-transform: uppercase;
+    color: var(--text-faint);
+    padding: 2px 6px 14px;
+    margin: 0;
+  }
+</style>

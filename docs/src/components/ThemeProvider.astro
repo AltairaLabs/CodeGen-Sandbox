@@ -1,0 +1,51 @@
+---
+/**
+ * Custom ThemeProvider — makes light the default sky.
+ *
+ * Atlas is dark-first, but this site opts into the light "printed star
+ * chart" register (see the design handoff). Starlight has no `defaultTheme`
+ * config option: its stock provider falls back to the visitor's
+ * prefers-color-scheme, which lands dark-preferring visitors on the night
+ * sky. The only change from Starlight's own ThemeProvider is that fallback —
+ * a stored preference still wins, so ThemeSelect keeps working unchanged and
+ * a returning visitor keeps whatever they chose.
+ *
+ * Everything else (the inlined-to-avoid-FOUC script, updatePickers, the icon
+ * template) is Starlight's, and must be kept in sync if Starlight changes it.
+ */
+import { Icon } from '@astrojs/starlight/components';
+---
+
+{/* This is intentionally inlined to avoid FOUC. */}
+<script is:inline>
+	window.StarlightThemeProvider = (() => {
+		const storedTheme =
+			typeof localStorage !== 'undefined' && localStorage.getItem('starlight-theme');
+		// Differs from Starlight: light is the default, not the system preference.
+		const theme = storedTheme || 'light';
+		document.documentElement.dataset.theme = theme === 'dark' ? 'dark' : 'light';
+		return {
+			updatePickers(theme = storedTheme || 'auto') {
+				document.querySelectorAll('starlight-theme-select').forEach((picker) => {
+					const select = picker.querySelector('select');
+					if (select) select.value = theme;
+					/** @type {HTMLTemplateElement | null} */
+					const tmpl = document.querySelector(`#theme-icons`);
+					const newIcon = tmpl && tmpl.content.querySelector('.' + theme);
+					if (newIcon) {
+						const oldIcon = picker.querySelector('svg.label-icon');
+						if (oldIcon) {
+							oldIcon.replaceChildren(...newIcon.cloneNode(true).childNodes);
+						}
+					}
+				});
+			},
+		};
+	})();
+</script>
+
+<template id="theme-icons">
+	<Icon name="sun" class="light" />
+	<Icon name="moon" class="dark" />
+	<Icon name="laptop" class="auto" />
+</template>
