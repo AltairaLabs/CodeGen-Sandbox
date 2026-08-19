@@ -10,12 +10,11 @@
     "check-links": "node check-links.js"
   },
   "dependencies": {
-    "@altairalabs/brand": "^0.4.0",
+    "@altairalabs/atlas-tokens": "^0.4.1",
+    "@altairalabs/brand": "^0.7.0",
     "@astrojs/mdx": "^5.0.3",
     "@astrojs/sitemap": "^3.7.0",
     "@astrojs/starlight": "^0.38.3",
-    "@fontsource/space-grotesk": "^5.3.0",
-    "@fontsource/spline-sans-mono": "^5.3.0",
     "astro": "^6.1.5",
     "mermaid": "^11.14.0"
   },

@@ -7,16 +7,28 @@ export default defineConfig({
   site: 'https://codegen-sandbox.altairalabs.ai',
   integrations: [
     starlight({
-      title: 'Codegen Sandbox',
+      // The product is CodeGen in the registry — two beats, capital G — like
+      // PromptPack, PromptArena and PromptKit. 'Codegen Sandbox' broke the
+      // pattern and the casing.
+      title: 'CodeGen',
       description:
         'A Docker-based MCP server that ships safe codegen tools (Read, Edit, Write, Glob, Grep, Bash, run_tests, run_lint, run_typecheck) for PromptKit agents. Hook up vendor MCP servers alongside for web search / fetch.',
       // Codegen Sandbox is a component of Omnia and gets no logo of its own:
       // the header is the Omnia Star Tile plus the title as a wordmark.
+      // PROVISIONAL: CodeGen Sandbox has no mark of its own in any repo.
+      // This used to point at logo-omnia.svg, which is worse than generic —
+      // it claims to be a different product. Replace when the mark system
+      // assigns CodeGen a real mark.
+      favicon: '/atlas/logo-altairalabs.svg',
+      // The Omnia mark, used as CodeGen's stand-in by decision — CodeGen has no
+      // mark of its own in any repo. `alt` says CodeGen, because that is the
+      // product this header names. Replace when the mark system assigns one.
       logo: {
         src: './public/atlas/logo-omnia.svg',
-        alt: 'Omnia',
+        alt: 'CodeGen',
         replacesTitle: false,
       },
+
       components: {
         PageFrame: './src/components/SitePageFrame.astro',
         // Adds the AltairaLabs masterbrand family bar as a strip across the
@@ -34,7 +46,10 @@ export default defineConfig({
       // pin, omnia doesn't use it and promptkit never registers it, and it
       // shipped ~13 woff2 of Inter + JetBrains Mono this site never renders
       // plus a gradient rule under every H2 that Atlas does not specify.
-      customCss: ['@altairalabs/brand/family-bar-starlight.css', './src/styles/custom.css'],
+      customCss: [
+        '@altairalabs/atlas-tokens/index.css',
+        '@altairalabs/brand/starlight-atlas.css','@altairalabs/brand/family-bar-starlight.css', './src/styles/custom.css',
+      ],
       // Code blocks: inky Atlas surfaces + starlight-leaning syntax
       // (poimandres for the night sky, a light theme for the printed chart).
       // Mirrors omnia's block — Codegen Sandbox takes the Omnia register.
