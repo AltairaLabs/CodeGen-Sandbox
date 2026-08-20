@@ -48,7 +48,7 @@ const heroEdges = [
   <div class="cs-hero-inner">
     <div class="cs-hero-copy">
       <p class="cs-eyebrow">MCP provider · promptkit codegen</p>
-      <h1>The agent thinks.<br />The sandbox has the hands.</h1>
+      <h1>The agent thinks.<span class="payoff">The sandbox has the hands.</span></h1>
       <p class="cs-tagline">{tagline}</p>
       <div class="cs-actions">
         {
@@ -150,6 +150,19 @@ const heroEdges = [
     margin-inline: calc(-1 * var(--sl-content-pad-x, 1.5rem));
     margin-block-start: calc(-1 * var(--sl-content-pad-x, 1.5rem));
   }
+  /* The payoff line, in this product's own accent — the same treatment every
+     sibling hero uses: promptarena --ion-cyan, omnia --starlight-500,
+     promptpack --pp-accent. --pulsar-300 is the star colour products.ts
+     assigns CodeGen, and Atlas re-points it per theme (#7DD3A8 on ink,
+     #0F7A4E on paper), so one declaration reads in both.
+
+     display: block replaces the <br> that used to split the two sentences. */
+  .payoff {
+    display: block;
+    margin-top: 8px;
+    color: var(--pulsar-300);
+  }
+
   .cs-hero-inner {
     /* 1180, matching the other four sites and the prose above. */
     max-width: 1180px;

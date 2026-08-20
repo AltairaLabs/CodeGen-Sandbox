@@ -19,15 +19,22 @@ export default defineConfig({
       // This used to point at logo-omnia.svg, which is worse than generic —
       // it claims to be a different product. Replace when the mark system
       // assigns CodeGen a real mark.
-      favicon: '/atlas/logo-altairalabs.svg',
-      // The Omnia mark, used as CodeGen's stand-in by decision — CodeGen has no
-      // mark of its own in any repo. `alt` says CodeGen, because that is the
-      // product this header names. Replace when the mark system assigns one.
+      favicon: '/atlas/logo-codegen.svg',
+      // Omnia's mark geometry in CodeGen-Sandbox's own hue: #7DD3A8 is the star
+      // colour products.ts already assigns this product, so the colour is
+      // derived rather than picked. CodeGen has no mark of its own in any repo;
+      // wearing Omnia's unaltered made it read as a different product.
+      //
+      // PROVISIONAL on the geometry only — replace when the mark system draws
+      // one for CodeGen.
       logo: {
-        src: './public/atlas/logo-omnia.svg',
+        src: './public/atlas/logo-codegen.svg',
         alt: 'CodeGen-Sandbox',
         replacesTitle: false,
       },
+
+
+
 
       components: {
         PageFrame: './src/components/SitePageFrame.astro',
