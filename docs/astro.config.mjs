@@ -7,10 +7,10 @@ export default defineConfig({
   site: 'https://codegen-sandbox.altairalabs.ai',
   integrations: [
     starlight({
-      // The product is CodeGen in the registry — two beats, capital G — like
-      // PromptPack, PromptArena and PromptKit. 'Codegen Sandbox' broke the
-      // pattern and the casing.
-      title: 'CodeGen',
+      // CodeGen-Sandbox, repo casing, per strategy/site-heroes.md §8 and the
+      // product registry. 'Codegen Sandbox' broke both the casing and the
+      // hyphenation.
+      title: 'CodeGen-Sandbox',
       description:
         'A Docker-based MCP server that ships safe codegen tools (Read, Edit, Write, Glob, Grep, Bash, run_tests, run_lint, run_typecheck) for PromptKit agents. Hook up vendor MCP servers alongside for web search / fetch.',
       // Codegen Sandbox is a component of Omnia and gets no logo of its own:
@@ -25,7 +25,7 @@ export default defineConfig({
       // product this header names. Replace when the mark system assigns one.
       logo: {
         src: './public/atlas/logo-omnia.svg',
-        alt: 'CodeGen',
+        alt: 'CodeGen-Sandbox',
         replacesTitle: false,
       },
 
