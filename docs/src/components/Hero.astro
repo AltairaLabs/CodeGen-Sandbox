@@ -48,7 +48,7 @@ const heroEdges = [
   <div class="cs-hero-inner">
     <div class="cs-hero-copy">
       <p class="cs-eyebrow">MCP provider · promptkit codegen</p>
-      <h1>The agent thinks.<br />The sandbox has the hands.</h1>
+      <h1>The agent thinks.<span class="payoff">The sandbox has the hands.</span></h1>
       <p class="cs-tagline">{tagline}</p>
       <div class="cs-actions">
         {
@@ -81,14 +81,91 @@ const heroEdges = [
 <style>
   /* Full-bleed band. Starlight pads the content column, so the hero pulls
      back out to the viewport edge. */
+  /* Starlight's splash layout puts everything inside .sl-container, capped at
+     1080px — every other AltairaLabs site lays its landing page out at 1180px,
+     which is why this one looked narrower and offset. Unconstrain the container
+     and re-apply the width to its children instead, so the prose still lines up
+     but the hero can bleed.
+
+     Bleeding by -24px (the content padding) is what left whitespace either side
+     of the gradient: the hero could only ever reach its 1080px parent's edges.
+     With the container unconstrained it reaches .content-panel's, which is the
+     full page width — no vw units, so no scrollbar overflow. */
+  /* Every rule below is scoped to [data-route='home'], set by SitePageFrame.
+     Scoping matters: this component is registered as a Starlight `Hero`
+     override, so its stylesheet is served on EVERY page, not just the one that
+     renders it. Without the scope these centred the header, the family bar and
+     the content column on the docs pages too — where all five sites are
+     deliberately full-bleed and left-aligned. */
+  :global([data-route='home'] header.header .header) {
+    max-width: 1180px;
+    margin-inline: auto;
+  }
+
+  /* The family bar's `docs` variant is full-bleed by design — right for a docs
+     page, wrong here. Every other site's HOME page renders the centred variant,
+     so the masterbrand mark starts on the same left edge as everything below
+     it. This site shares one Header between its splash page and its docs, so
+     the variant cannot differ by prop; centring the bar's inner row on the
+     splash page gets the same result. */
+  :global([data-route='home'] .family-bar.docs .fb-inner) {
+    max-width: 1180px;
+    margin-inline: auto;
+    padding-inline: 0;
+  }
+
+  /* No search on the landing page. The other four product sites' home pages
+     have none — theirs are bespoke pages, this one is a Starlight splash page
+     and so inherits the docs header wholesale. Search stays on the docs pages,
+     where it belongs and where the reader is looking for it.
+
+     (It also does nothing in `astro dev`: Starlight only builds the Pagefind
+     index during `astro build`, so /pagefind/pagefind.js 404s here.) */
+  :global([data-route='home'] header.header site-search) {
+    display: none;
+  }
+
+  /* `next: false` in the page's frontmatter empties Starlight's pagination
+     footer, but the element still renders and takes vertical space above the
+     family footer. Remove it on the landing page. */
+  :global([data-route='home'] main > footer.sl-flex) {
+    display: none;
+  }
+
+  :global([data-route='home'] .sl-container) {
+    max-width: none;
+  }
+  :global([data-route='home'] .sl-container > *) {
+    max-width: 1180px;
+    margin-inline: auto;
+  }
+
   .cs-hero {
     background: var(--atmo-starlight);
     border-bottom: 1px solid var(--hairline);
     padding: 76px 48px 64px;
+    /* Full bleed: cancel .content-panel's inline padding, and its top padding
+       too — that gap above the gradient was the panel's, not the hero's. */
+    max-width: none;
     margin-inline: calc(-1 * var(--sl-content-pad-x, 1.5rem));
+    margin-block-start: calc(-1 * var(--sl-content-pad-x, 1.5rem));
   }
+  /* The payoff line, in this product's own accent — the same treatment every
+     sibling hero uses: promptarena --ion-cyan, omnia --starlight-500,
+     promptpack --pp-accent. --pulsar-300 is the star colour products.ts
+     assigns CodeGen, and Atlas re-points it per theme (#7DD3A8 on ink,
+     #0F7A4E on paper), so one declaration reads in both.
+
+     display: block replaces the <br> that used to split the two sentences. */
+  .payoff {
+    display: block;
+    margin-top: 8px;
+    color: var(--pulsar-300);
+  }
+
   .cs-hero-inner {
-    max-width: 1080px;
+    /* 1180, matching the other four sites and the prose above. */
+    max-width: 1180px;
     margin: 0 auto;
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));

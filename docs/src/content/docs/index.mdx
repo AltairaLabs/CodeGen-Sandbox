@@ -1,13 +1,18 @@
 ---
-title: Codegen Sandbox
+title: CodeGen-Sandbox
 description: A Docker-based MCP server shipping safe codegen tools for PromptKit agents.
 template: splash
 # The page title matches the site title, so Starlight's default composition
-# renders "Codegen Sandbox | Codegen Sandbox" in the tab and in search
-# results. Override the whole title for this page only.
+# renders "CodeGen-Sandbox | CodeGen-Sandbox" in the tab and in search results. Override the
+# whole title for this page only.
+#
+# `next: false` removes Starlight's pagination footer. It is a docs affordance
+# — "Next: Getting Started" — and a landing page is not part of that sequence;
+# no other product site's home page has one.
+next: false
 head:
   - tag: title
-    content: Codegen Sandbox — safe codegen tools for PromptKit agents
+    content: CodeGen-Sandbox — safe codegen tools for PromptKit agents
 hero:
   tagline: Safe, structured, containerised tools that let a PromptKit agent read, edit, and verify code — separated from the agent's runtime by an MCP wire.
   actions:

@@ -1,18 +1,21 @@
 ---
 import Default from '@astrojs/starlight/components/PageFrame.astro';
-import SiteFooter from './landing/SiteFooter.astro';
+import SiteFooter from '@altairalabs/brand/SiteFooter.astro';
 
 /**
  * Exposes the page's section as data-route so stylesheets can scope rules to
  * a page type. The tool-reference schema tables are set in mono this way,
  * without touching the 22 tools/*.md files or the prose tables elsewhere.
  *
- * Also mounts the shared AltairaLabs SiteFooter. Note this diverges from
- * omnia/promptkit, which render the same component only on their standalone
- * src/pages/index.astro landing page and leave Starlight doc pages with just
- * the stock prev/next footer. This site has no separate landing page — its
- * home is a Starlight splash — and the design handoff puts a footer on every
- * screen, so it is mounted site-wide here.
+ * Also mounts the shared AltairaLabs SiteFooter — on the HOME page only.
+ *
+ * It used to be mounted site-wide, on the reasoning that the design handoff
+ * puts a footer on every screen and this site has no standalone landing page.
+ * That made it the only one of the five product sites with a family footer
+ * under its documentation; the other four carry it on their landing page and
+ * leave doc pages with Starlight's own prev/next footer. Consistency across
+ * the five won. If the handoff's every-screen rule is the one that should
+ * hold, it should be applied to all five, not just this one.
  */
 const id = Astro.locals.starlightRoute?.id ?? '';
 const route = id === '' || id === 'index' ? 'home' : id.startsWith('tools/') ? 'tools' : 'doc';
@@ -25,9 +28,32 @@ const route = id === '' || id === 'index' ? 'home' : id.startsWith('tools/') ? '
     <slot />
   </Default>
 </div>
+{route === 'home' && (
 <div class="site-footer-frame">
-  <SiteFooter />
+  <SiteFooter
+      current="codegen"
+      tagline="Safe, structured, containerised tools that let a PromptKit agent read, edit and verify code — separated from the agent's runtime by an MCP wire."
+      columns={[
+        {
+          title: 'Docs',
+          links: [
+            { text: 'Getting started', href: '/getting-started/' },
+            { text: 'Architecture', href: '/architecture/' },
+            { text: 'Tool reference', href: '/tools/read/' },
+          ],
+        },
+        {
+          title: 'Reference',
+          links: [
+            { text: 'Configuration', href: '/reference/configuration/' },
+            { text: 'MCP protocol', href: '/reference/mcp-protocol/' },
+            { text: 'Docker deployment', href: '/operations/docker/' },
+          ],
+        },
+      ]}
+    />
 </div>
+)}
 
 <style>
   /* The siblings mount SiteFooter on a landing page with no sidebar; here it

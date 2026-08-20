@@ -1,10 +1,21 @@
+/* Starlight's variables are mapped once, in atlas-starlight.css, shared
+   byte-for-byte by all five docs sites. The block that used to be here mapped
+   the same variables again and — because this file loads afterwards — silently
+   won. Nothing here defined anything the shared file lacks; it only disagreed
+   with it, which is precisely the drift the shared file exists to end. */
+/*
+ * Fonts and tokens come from @altairalabs/atlas-tokens, loaded once via the
+ * customCss list in astro.config.mjs. Importing it here as well declared every
+ * @font-face twice — 16 faces against the other sites' 8.
+ *
+ * This site previously loaded @fontsource directly and carried NO token layer
+ * at all, which is why it did not look like its siblings. The other five sites
+ * declared the same families twice (fontsource + tokens) and ended up with
+ * four @font-face rules for Space Grotesk 400 alone.
+ *
+ * One font source. Do not re-add @fontsource here.
+ */
 /* Fonts (self-hosted via Fontsource) */
-@import '@fontsource/space-grotesk/400.css';
-@import '@fontsource/space-grotesk/500.css';
-@import '@fontsource/space-grotesk/600.css';
-@import '@fontsource/space-grotesk/700.css';
-@import '@fontsource/spline-sans-mono/400.css';
-@import '@fontsource/spline-sans-mono/500.css';
 
 /* Atlas token layer */
 @import './atlas/colors.css';
@@ -29,90 +40,11 @@
    design needs (node colours, radii, tracking, glow, accents).
    ============================================================ */
 
-/* ---- Families ------------------------------------------------ */
-:root {
-  --sl-font: var(--font-sans);
-  --sl-font-mono: var(--font-mono);
-  --sl-font-system: var(--font-sans);
-  --sl-font-system-mono: var(--font-mono);
 
-  /* 58px docs header, PLUS the family-bar strip stacked above it.
-     @altairalabs/brand/family-bar-starlight.css sets this to
-     calc(3.5rem + var(--fam-h)); this file loads after it, so a flat value
-     here would clobber that and reserve 58px for ~101px of chrome — the
-     header then overlaps the first screenful. Keep the --fam-h term. */
-  --sl-nav-height: calc(3.625rem + var(--fam-h, 0px));
-  --sl-sidebar-width: 16rem;   /* 256px */
-  --sl-content-width: 45rem;
-}
 
-/* ============================================================
-   DARK — the night sky
-   ============================================================ */
-:root,
-::backdrop {
-  --sl-color-white: var(--star-100);
-  --sl-color-gray-1: var(--star-200);
-  --sl-color-gray-2: var(--star-400);
-  --sl-color-gray-3: var(--star-600);
-  --sl-color-gray-4: var(--star-800);
-  --sl-color-gray-5: var(--ink-hairline);
-  --sl-color-gray-6: var(--ink-surface);
-  --sl-color-gray-7: var(--ink-raised);
-  --sl-color-black: var(--ink-canvas);
 
-  --sl-color-text: var(--text-body);
-  --sl-color-text-accent: var(--text-link);
-  --sl-color-text-invert: var(--gold-ink);
 
-  --sl-color-bg: var(--bg-app);
-  --sl-color-bg-nav: var(--bg-app);
-  --sl-color-bg-sidebar: var(--bg-app);
-  --sl-color-bg-inline-code: var(--surface-2);
-  --sl-color-bg-accent: var(--accent-inter);
 
-  --sl-color-hairline: var(--hairline);
-  --sl-color-hairline-light: var(--hairline-faint);
-  --sl-color-hairline-shade: var(--hairline-strong);
-
-  /* Starlight's accent = Atlas starlight blue (interaction).
-     Gold is NOT an accent token — it is applied once per view, by hand,
-     to the single primary action (see .cs-cta-primary below). */
-  --sl-color-accent: var(--starlight-500);
-  --sl-color-accent-low: var(--starlight-tint);
-  --sl-color-accent-high: var(--starlight-300);
-
-  /* Asides / callouts */
-  --sl-color-blue: var(--starlight-500);
-  --sl-color-blue-low: var(--starlight-tint);
-  --sl-color-blue-high: var(--starlight-300);
-  --sl-color-green: var(--pulsar-500);
-  --sl-color-green-low: var(--pulsar-tint);
-  --sl-color-green-high: var(--pulsar-300);
-  --sl-color-orange: var(--amber-500);
-  --sl-color-orange-low: var(--amber-tint);
-  --sl-color-orange-high: var(--amber-300);
-  --sl-color-red: var(--signal-red);
-  --sl-color-red-low: var(--red-tint);
-  --sl-color-red-high: var(--signal-red-300);
-
-  /* Shiki / code surfaces — deepest ink */
-  --astro-code-color-background: var(--surface-code);
-  --astro-code-color-text: var(--starlight-200);
-}
-
-/* ============================================================
-   LIGHT — the printed star chart (the default for this site)
-   Atlas re-points its own ramps under [data-theme="light"], so the
-   mappings above mostly follow automatically. Only the values that
-   must NOT follow are restated here.
-   ============================================================ */
-:root[data-theme='light'] {
-  --sl-color-accent: #2563EB;          /* starlight deepens on paper */
-  --sl-color-accent-high: #1D4ED8;
-  --sl-color-text-invert: var(--gold-ink);
-  --astro-code-color-text: var(--star-400);
-}
 
 /* ============================================================
    Chrome
@@ -132,25 +64,10 @@ header.header {
   color: var(--text-heading);
 }
 
-/* Sidebar — mono for tool names, hairline group rules */
-.sidebar-content summary,
-.sidebar-content > ul > li > span {
-  font: 500 11px/1 var(--font-mono);
-  letter-spacing: var(--tracking-label);
-  text-transform: uppercase;
-  color: var(--text-faint);
-}
-.sidebar-content a {
-  font: 500 13px/1.3 var(--font-sans);
-  border-radius: var(--radius-md);
-  color: var(--text-body);
-}
-.sidebar-content a[aria-current='page'] {
-  color: var(--accent-inter);
-  background: var(--starlight-tint);
-  font-weight: 500;
-}
-
+/* The docs sidebar is styled in atlas-starlight.css, shared by all five docs
+   sites. The rules that used to be here differed from the siblings' — group
+   labels via a different selector, no font on the links, and a site-specific
+   colour on the active item. */
 /* Headings — tight tracking, Space Grotesk 600 */
 .sl-markdown-content :is(h1, h2, h3, h4) {
   font-family: var(--font-sans);
