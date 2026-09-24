@@ -1035,3 +1035,62 @@ jobs:
           grep -qE 'graph.svg|wrote' <<<"$OUT" || fail "render_dot confirmation missing: $OUT"
           grep -q '<svg' "$WS/graph.svg" || fail "graph.svg missing <svg root"
           pass "dot render surfaced via MCP"
+
+  docker-promptarena:
+    name: Dockerfile.promptarena build + brief smoke
+    runs-on: ubuntu-latest
+    needs: go
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build promptarena image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.promptarena
+          push: false
+          load: true
+          tags: codegen-sandbox-promptarena:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Probe promptarena + packc on PATH, brief outside /workspace
+        run: |
+          set -euo pipefail
+          docker run --rm --entrypoint sh codegen-sandbox-promptarena:ci -c '
+            set -eu
+            promptarena --help >/dev/null
+            packc --help >/dev/null
+            # The brief must land OUTSIDE /workspace: this image mounts a
+            # project there on a project-bound sandbox, and the brief must
+            # not be written into it.
+            test -f /opt/promptarena/brief/AGENTS.md
+            test -d /opt/promptarena/brief/.claude/skills/promptarena-authoring
+            [ -z "$(ls -A /workspace 2>/dev/null)" ] || { echo "/workspace is not empty" >&2; exit 1; }
+            echo "promptarena + packc on PATH, brief present, /workspace untouched"
+          '
+
+      - name: Boot sandbox from promptarena image + assert tools/list
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/promptarena-ws
+          docker run -d --rm \
+            --name codegen-probe-promptarena \
+            -p 127.0.0.1:18095:8080 \
+            -v /tmp/promptarena-ws:/workspace \
+            codegen-sandbox-promptarena:ci \
+              -addr=0.0.0.0:8080 -workspace=/workspace
+          trap 'docker stop codegen-probe-promptarena 2>/dev/null || true' EXIT
+
+          export ADDR=127.0.0.1:18095
+          export SSE_FILE=$(mktemp)
+          source scripts/mcp-helpers.sh
+          trap 'mcp_close_session; docker stop codegen-probe-promptarena 2>/dev/null || true' EXIT
+          mcp_open_session
+
+          say "Bash over MCP: promptarena + packc visible to the sandbox"
+          OUT=$(mcp_call "Bash" '{"command":"promptarena --help >/dev/null && packc --help >/dev/null && echo ok","description":"probe promptarena+packc","timeout":10}')
+          grep -q 'ok' <<<"$OUT" || fail "Bash did not confirm promptarena/packc: $OUT"
+          pass "promptarena + packc reachable from inside the running sandbox"

@@ -5,6 +5,8 @@ name: Release
 #   - ghcr.io/altairalabs/codegen-sandbox-tools:latest
 #   - ghcr.io/altairalabs/codegen-sandbox:<tag>        (Go convenience image)
 #   - ghcr.io/altairalabs/codegen-sandbox:latest
+#   - ghcr.io/altairalabs/codegen-sandbox-promptarena:<tag>
+#   - ghcr.io/altairalabs/codegen-sandbox-promptarena:latest
 #
 # Multi-arch: linux/amd64 + linux/arm64.
 
@@ -27,6 +29,7 @@ env:
   TOOLS_RUST_IMAGE: ghcr.io/altairalabs/codegen-sandbox-tools-rust
   TOOLS_RENDER_IMAGE: ghcr.io/altairalabs/codegen-sandbox-tools-render
   CONVENIENCE_IMAGE: ghcr.io/altairalabs/codegen-sandbox
+  PROMPTARENA_IMAGE: ghcr.io/altairalabs/codegen-sandbox-promptarena
 
 jobs:
   publish:
@@ -153,6 +156,24 @@ jobs:
             ${{ env.CONVENIENCE_IMAGE }}:latest
           build-contexts: |
             codegen-sandbox-tools:dev=docker-image://${{ env.TOOLS_IMAGE }}:${{ steps.tag.outputs.value }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Dockerfile.promptarena pins its own `FROM
+      # ghcr.io/altairalabs/codegen-sandbox@sha256:...` base by digest
+      # (bumped deliberately, not tied to this release's tag), so this
+      # build needs no build-contexts wiring to the job above — it just
+      # builds and pushes standalone.
+      - name: Build + push promptarena image (multi-arch)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.promptarena
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ env.PROMPTARENA_IMAGE }}:${{ steps.tag.outputs.value }}
+            ${{ env.PROMPTARENA_IMAGE }}:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
