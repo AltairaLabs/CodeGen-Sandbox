@@ -40,7 +40,7 @@ RUN apk add --no-cache git ca-certificates \
 # Official release ships static linux binaries for amd64 + arm64 as tarballs.
 FROM alpine:3.20.3 AS glci-fetcher
 
-ARG GOLANGCI_LINT_VERSION=v2.6.0
+ARG GOLANGCI_LINT_VERSION=v2.14.0
 ARG TARGETARCH
 
 RUN apk add --no-cache curl tar \

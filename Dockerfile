@@ -29,17 +29,38 @@
 # `ghcr.io/altairalabs/codegen-sandbox-tools:<tag>` multi-arch manifest.
 FROM golang:1.25-alpine
 
-ARG GOLANGCI_LINT_VERSION=v2.6.0
+ARG GOLANGCI_LINT_VERSION=v2.14.0
+ARG TARGETARCH
 
 # Shared utilities the sandbox tools depend on + Go-specific linter.
-RUN apk add --no-cache \
+# `apk upgrade` first: the golang base tag trails Alpine's security fixes
+# (libcurl, libexpat, openssl), and this image is scanned by consumers'
+# publish gates, so it ships with every package at its fixed version.
+#
+# golangci-lint is fetched from its release directly rather than via the
+# upstream install.sh: from v2.14.0 the release also ships per-tarball
+# `.sbom.json` files, and install.sh's checksum lookup matches the SBOM's
+# line instead of the tarball's and fails. The tarball is verified against
+# the release checksums file by exact filename.
+RUN apk upgrade --no-cache \
+    && apk add --no-cache \
       bash \
       git \
       make \
       ca-certificates \
       curl \
-    && curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh \
-        | sh -s -- -b /usr/local/bin "${GOLANGCI_LINT_VERSION}" \
+    && V="${GOLANGCI_LINT_VERSION#v}" \
+    && T="golangci-lint-${V}-linux-${TARGETARCH:-amd64}.tar.gz" \
+    && BASE="https://github.com/golangci/golangci-lint/releases/download/${GOLANGCI_LINT_VERSION}" \
+    && cd /tmp \
+    && curl -sSfLO "${BASE}/${T}" \
+    && curl -sSfL "${BASE}/golangci-lint-${V}-checksums.txt" \
+       | awk -v f="${T}" '$2 == f {print; n++} END {exit n != 1}' > "${T}.sha256" \
+    && sha256sum -c "${T}.sha256" \
+    && tar -xzf "${T}" \
+    && install -m 0755 "golangci-lint-${V}-linux-${TARGETARCH:-amd64}/golangci-lint" /usr/local/bin/golangci-lint \
+    && rm -rf /tmp/golangci-lint-* \
+    && golangci-lint version \
     && apk del curl
 
 # Sandbox layer — the artifact pattern. Operators replace this COPY with a
