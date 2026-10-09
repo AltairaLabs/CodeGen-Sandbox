@@ -20,6 +20,25 @@
 # See examples/ for ready-made Dockerfile.python / Dockerfile.node /
 # Dockerfile.rust templates.
 
+# -------- golangci-lint, built from source --------
+# Its release binaries are built with whatever Go the release used (v2.14.0:
+# Go 1.27.0), so they carry that toolchain's stdlib CVEs until the next
+# release. Building it here with the base's own Go gives it the same patched
+# stdlib as everything else in the image. Cross-compiled on the build
+# platform, so a multi-arch build never compiles it under emulation.
+FROM --platform=$BUILDPLATFORM golang:1.27-alpine AS golangci-lint
+ARG GOLANGCI_LINT_VERSION=v2.14.0
+ARG TARGETOS
+ARG TARGETARCH
+# A cross-compiled `go install` lands in $GOPATH/bin/<os>_<arch>/, a native
+# one in $GOPATH/bin/; take whichever was written.
+RUN CGO_ENABLED=0 GOOS="${TARGETOS:-linux}" GOARCH="${TARGETARCH:-amd64}" \
+    go install -trimpath -ldflags='-s -w' \
+    "github.com/golangci/golangci-lint/v2/cmd/golangci-lint@${GOLANGCI_LINT_VERSION}" \
+    && mkdir -p /out \
+    && B="$(go env GOPATH)/bin" \
+    && cp "$(ls "$B/${TARGETOS:-linux}_${TARGETARCH:-amd64}/golangci-lint" "$B/golangci-lint" 2>/dev/null | head -1)" /out/golangci-lint
+
 # -------- Runtime: Go base + sandbox tools + golangci-lint --------
 #
 # The `COPY --from=codegen-sandbox-tools:dev` lines below reference the
@@ -27,41 +46,24 @@
 # first and tags it `codegen-sandbox-tools:dev`. In CI's release workflow,
 # buildx's --build-context remaps that name to the freshly-published
 # `ghcr.io/altairalabs/codegen-sandbox-tools:<tag>` multi-arch manifest.
-FROM golang:1.25-alpine
+#
+# Go 1.27: the 1.25 line has no release fixing stdlib CVE-2026-78667 and
+# CVE-2026-97031, which consumers' publish gates refuse in the toolchain.
+FROM golang:1.27-alpine
 
-ARG GOLANGCI_LINT_VERSION=v2.14.0
-ARG TARGETARCH
-
-# Shared utilities the sandbox tools depend on + Go-specific linter.
+# Shared utilities the sandbox tools depend on.
 # `apk upgrade` first: the golang base tag trails Alpine's security fixes
 # (libcurl, libexpat, openssl), and this image is scanned by consumers'
 # publish gates, so it ships with every package at its fixed version.
-#
-# golangci-lint is fetched from its release directly rather than via the
-# upstream install.sh: from v2.14.0 the release also ships per-tarball
-# `.sbom.json` files, and install.sh's checksum lookup matches the SBOM's
-# line instead of the tarball's and fails. The tarball is verified against
-# the release checksums file by exact filename.
 RUN apk upgrade --no-cache \
     && apk add --no-cache \
       bash \
       git \
       make \
-      ca-certificates \
-      curl \
-    && V="${GOLANGCI_LINT_VERSION#v}" \
-    && T="golangci-lint-${V}-linux-${TARGETARCH:-amd64}.tar.gz" \
-    && BASE="https://github.com/golangci/golangci-lint/releases/download/${GOLANGCI_LINT_VERSION}" \
-    && cd /tmp \
-    && curl -sSfLO "${BASE}/${T}" \
-    && curl -sSfL "${BASE}/golangci-lint-${V}-checksums.txt" \
-       | awk -v f="${T}" '$2 == f {print; n++} END {exit n != 1}' > "${T}.sha256" \
-    && sha256sum -c "${T}.sha256" \
-    && tar -xzf "${T}" \
-    && install -m 0755 "golangci-lint-${V}-linux-${TARGETARCH:-amd64}/golangci-lint" /usr/local/bin/golangci-lint \
-    && rm -rf /tmp/golangci-lint-* \
-    && golangci-lint version \
-    && apk del curl
+      ca-certificates
+
+COPY --from=golangci-lint /out/golangci-lint /usr/local/bin/golangci-lint
+RUN golangci-lint version
 
 # Sandbox layer — the artifact pattern. Operators replace this COPY with a
 # published `altairalabs/codegen-sandbox-tools:vX.Y.Z` tag in their own
