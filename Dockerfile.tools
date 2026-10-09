@@ -11,7 +11,9 @@
 # The final image contains only static binaries on `scratch` — ~15 MB total.
 
 # -------- Builder: compiles the sandbox binary --------
-FROM golang:1.25-alpine AS builder
+# Go 1.27: the 1.25 line has no release fixing stdlib CVE-2026-78667 and
+# CVE-2026-97031, which consumers' publish gates refuse in the sandbox binary.
+FROM golang:1.27-alpine AS builder
 
 WORKDIR /src
 RUN apk add --no-cache git
