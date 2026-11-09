@@ -1,0 +1,58 @@
+# Dependency updates.
+#
+# Images built on this one (Omnia's promptarena-sandbox among them) refuse a
+# fixable HIGH/CRITICAL CVE at their own publish gate, so a vulnerable
+# dependency here blocks their releases. Each of those used to be found by a
+# downstream publish and fixed by hand: a go.mod bump, a tag, a digest bump.
+# Now Dependabot opens the bump, dependabot-merge.yml merges it once CI is
+# green, and auto-release.yml cuts the patch release that downstream
+# Dependabot then picks up.
+#
+# Major versions are not opened: they can change behaviour, so they are a
+# person's call, not a merge on green.
+
+version: 2
+updates:
+  - package-ecosystem: "gomod"
+    directory: "/"
+    schedule:
+      interval: "daily"
+      time: "05:00"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "fix(deps)"
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+    groups:
+      # One PR, one release, for every minor and patch bump of a morning.
+      go-minor-and-patch:
+        update-types: ["minor", "patch"]
+
+  # Dockerfile, Dockerfile.tools and Dockerfile.tools-*: the base images and
+  # the tools layered onto them.
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "daily"
+      time: "05:00"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "fix(deps)"
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+    groups:
+      base-images:
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "ci(deps)"
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]

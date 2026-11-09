@@ -1,0 +1,76 @@
+name: Auto release
+
+# Cuts the next patch release when main has changed what the images are built
+# from — go.mod, go.sum or a Dockerfile — since the last v* tag, and CI passed
+# on it.
+#
+# These releases carry dependency and base-image fixes, which images built on
+# this one need before their own publish gates will pass. Features are
+# released by hand, as a minor, like any other release; this only ever bumps
+# the patch.
+#
+# A tag pushed with GITHUB_TOKEN starts no workflow, so release.yml is
+# dispatched on the new tag rather than triggered by it. Dispatched on the tag
+# ref, it sees GITHUB_REF=refs/tags/vX.Y.Z exactly as a pushed tag gives it.
+#
+# Runs after CI on main (a person's merge), or when dependabot-merge.yml
+# dispatches it (a bot's merge, which runs no CI on main).
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: auto-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.event == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Require CI to have passed
+        if: github.event_name == 'workflow_run'
+        run: bash scripts/ci/ci-passed.sh "${{ github.event.workflow_run.id }}"
+
+      - name: Tag the next patch if the images changed
+        id: tag
+        run: |
+          set -euo pipefail
+          last="$(git describe --tags --abbrev=0 --match 'v[0-9]*.[0-9]*.[0-9]*' HEAD)"
+          if git diff --quiet "$last" HEAD -- go.mod go.sum 'Dockerfile*'; then
+            echo "nothing the images are built from changed since $last"
+            exit 0
+          fi
+          IFS=. read -r major minor patch <<<"${last#v}"
+          next="v${major}.${minor}.$((patch + 1))"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$next" -m "$next: dependency and base-image updates since $last"
+          git push origin "$next"
+          echo "tag=$next" >> "$GITHUB_OUTPUT"
+          {
+            echo "Tagged **$next** (since $last):"
+            echo
+            git log --format='- %s' "$last..HEAD" -- go.mod go.sum 'Dockerfile*'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Release it
+        if: steps.tag.outputs.tag != ''
+        run: gh workflow run release.yml --ref "${{ steps.tag.outputs.tag }}"
