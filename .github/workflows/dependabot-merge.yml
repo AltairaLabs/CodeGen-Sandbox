@@ -1,0 +1,69 @@
+name: Dependabot merge
+
+# Merges a Dependabot PR once its CI run has passed, then asks auto-release.yml
+# to cut a patch release if the merge changed what the images are built from.
+#
+# workflow_run, not pull_request: it runs in this repository's context with a
+# write token, after CI has finished, so the merge is gated on the CI result
+# itself (scripts/ci/ci-passed.sh) rather than on branch protection, which
+# main does not have. A merge made with GITHUB_TOKEN starts no workflow of its
+# own, so CI does not run again on main for it and auto-release.yml would never
+# hear of it: that is why this dispatches auto-release.yml itself, which a
+# GITHUB_TOKEN may do.
+#
+# Majors are never opened (dependabot.yml), so everything that reaches here is
+# a minor or patch bump.
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+
+concurrency:
+  group: dependabot-merge
+  cancel-in-progress: false
+
+jobs:
+  merge:
+    if: >-
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.actor.login == 'dependabot[bot]' &&
+      startsWith(github.event.workflow_run.head_branch, 'dependabot/')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+      BRANCH: ${{ github.event.workflow_run.head_branch }}
+      HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+      RUN_ID: ${{ github.event.workflow_run.id }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: scripts/ci
+
+      - name: Require CI to have passed
+        run: bash scripts/ci/ci-passed.sh "$RUN_ID"
+
+      - name: Merge
+        run: |
+          set -euo pipefail
+          pr="$(gh pr list --head "$BRANCH" --state open --json number,headRefOid \
+            --jq '.[] | "\(.number) \(.headRefOid)"')"
+          if [ -z "$pr" ]; then
+            echo "no open Dependabot PR for $BRANCH"; exit 0
+          fi
+          read -r number head <<<"$pr"
+          # A run for an older head says nothing about the commit now there.
+          if [ "$head" != "$HEAD_SHA" ]; then
+            echo "PR #$number moved on to $head; CI for $HEAD_SHA does not cover it"; exit 0
+          fi
+          gh pr merge "$number" --squash --match-head-commit "$HEAD_SHA" --delete-branch
+
+      - name: Cut a release if the images changed
+        run: gh workflow run auto-release.yml --ref main
