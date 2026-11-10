@@ -26,7 +26,7 @@
 # with CGO disabled so the result is fully static and copyable into scratch.
 # Multi-arch is handled by buildx setting GOARCH via TARGETARCH implicitly
 # through the base image's Go toolchain.
-FROM golang:1.25-alpine AS gopls-builder
+FROM golang:1.27-alpine AS gopls-builder
 
 ARG GOPLS_VERSION=v0.21.0
 
@@ -38,7 +38,7 @@ RUN apk add --no-cache git ca-certificates \
 
 # -------- golangci-lint fetcher --------
 # Official release ships static linux binaries for amd64 + arm64 as tarballs.
-FROM alpine:3.20.3 AS glci-fetcher
+FROM alpine:3.24.3 AS glci-fetcher
 
 ARG GOLANGCI_LINT_VERSION=v2.14.0
 ARG TARGETARCH
