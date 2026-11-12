@@ -38,7 +38,7 @@ RUN apk add --no-cache git ca-certificates \
 
 # -------- golangci-lint fetcher --------
 # Official release ships static linux binaries for amd64 + arm64 as tarballs.
-FROM alpine:3.24.3 AS glci-fetcher
+FROM alpine:3.24.4 AS glci-fetcher
 
 ARG GOLANGCI_LINT_VERSION=v2.14.0
 ARG TARGETARCH
