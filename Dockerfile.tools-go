@@ -26,7 +26,7 @@
 # with CGO disabled so the result is fully static and copyable into scratch.
 # Multi-arch is handled by buildx setting GOARCH via TARGETARCH implicitly
 # through the base image's Go toolchain.
-FROM golang:1.25-alpine AS gopls-builder
+FROM golang:1.27-alpine AS gopls-builder
 
 ARG GOPLS_VERSION=v0.21.0
 
